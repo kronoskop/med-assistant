@@ -1,6 +1,6 @@
 # med-assistant
 
-HTTP API ИИ-ассистента для медперсонала. Модель — локальная **MedGemma** (`med-gemma-1.5-4b`) в [LM Studio](https://lmstudio.ai/). Веб-интерфейса нет: только JSON API.
+HTTP API ИИ-ассистента для медперсонала. Модель — локальная **MedGemma** (`med-gemma-1.5-4b`) в [LM Studio](https://lmstudio.ai/download/latest/darwin/arm64?format=dmg). Веб-интерфейса нет: только JSON API.
 
 Ассистент — поддержка решения врача, не диагноз. Специализации по отделению нет.
 
@@ -8,7 +8,7 @@ HTTP API ИИ-ассистента для медперсонала. Модель
 
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/) (или pip)
-- LM Studio с загруженной MedGemma и включённым локальным сервером (по умолчанию `http://127.0.0.1:1234`)
+- [LM Studio](https://lmstudio.ai/download/latest/darwin/arm64?format=dmg) (macOS Apple Silicon, не Bionic) с загруженной MedGemma и включённым локальным сервером (по умолчанию `http://127.0.0.1:1234`)
 
 ## Настройка
 
