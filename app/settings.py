@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     lmstudio_model: str = "med-gemma-1.5-4b"
     lmstudio_api_key: str = "lm-studio"
     lmstudio_timeout_seconds: float = 120
+    # Рассуждение модели содержит клинический текст запроса, поэтому отладочная
+    # запись выключена по умолчанию и включается явно.
+    log_model_reasoning: bool = False
 
 
 @lru_cache

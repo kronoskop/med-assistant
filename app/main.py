@@ -1,21 +1,25 @@
 import logging
 import time
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.llm import ensure_structured_output, get_llm
 from app.routers import router
 from app.schemas import AppError, ErrorBody
 
 access_logger = logging.getLogger("app.access")
+startup_logger = logging.getLogger("app.startup")
 
 
 def create_app() -> FastAPI:
     application = FastAPI(
         title="med-assistant",
         description="HTTP API медицинского ИИ-ассистента",
+        lifespan=_lifespan,
     )
     application.include_router(router)
     application.add_exception_handler(AppError, _app_error_handler)
@@ -23,6 +27,31 @@ def create_app() -> FastAPI:
     application.add_exception_handler(StarletteHTTPException, _http_handler)
     application.middleware("http")(_access_log)
     return application
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    await _check_model_on_startup(app)
+    yield
+
+
+async def _check_model_on_startup(app: FastAPI) -> None:
+    """Несовместимую модель обнаруживает администратор при запуске, а не врач
+    ошибкой на свой первый вопрос.
+
+    Недоступная LM Studio запуску не мешает: это штатное состояние, его
+    описывает `GET /ready`, и сервер модели может подняться позже.
+    """
+    try:
+        provider = app.dependency_overrides.get(get_llm, get_llm)
+        await ensure_structured_output(provider())
+    except AppError as exc:
+        if exc.code == "model_incompatible":
+            raise RuntimeError(exc.message) from exc
+        startup_logger.warning(
+            "LM Studio недоступна при запуске (%s): проверка модели отложена до /ready",
+            exc.code,
+        )
 
 
 async def _access_log(request: Request, call_next):
