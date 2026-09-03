@@ -10,6 +10,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.llm import ensure_structured_output, get_llm
 from app.routers import router
 from app.schemas import AppError, ErrorBody
+from app.web import router as web_router
 
 access_logger = logging.getLogger("app.access")
 startup_logger = logging.getLogger("app.startup")
@@ -22,6 +23,7 @@ def create_app() -> FastAPI:
         lifespan=_lifespan,
     )
     application.include_router(router)
+    application.include_router(web_router)
     application.add_exception_handler(AppError, _app_error_handler)
     application.add_exception_handler(RequestValidationError, _validation_handler)
     application.add_exception_handler(StarletteHTTPException, _http_handler)
