@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from app.llm import LLMClient, get_llm
+from app.llm import LLMClient, ensure_structured_output, get_llm
 from app.prompt import DISCLAIMER
 from app.schemas import AppError, ChatMessage, ChatRequest, ChatResponse
 
@@ -20,6 +20,7 @@ async def health() -> dict[str, str]:
 async def ready(llm: LLMClient = Depends(get_llm)):
     try:
         await llm.ping()
+        await ensure_structured_output(llm)
     except AppError as exc:
         return JSONResponse(
             status_code=503,

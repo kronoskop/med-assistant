@@ -13,6 +13,16 @@ def test_health_ok_json(client):
     assert "<html" not in response.text.lower()
 
 
+def test_chat_response_is_json_not_html(client, fake_llm):
+    response = client.post(
+        "/api/v1/chat",
+        json={"messages": [{"role": "user", "content": "Вопрос"}]},
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/json")
+    assert "<html" not in response.text.lower()
+
+
 def test_unknown_path_json_404(client):
     response = client.get("/no-such-route")
     assert response.status_code == 404

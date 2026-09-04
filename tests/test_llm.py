@@ -1,6 +1,7 @@
 import ast
 import asyncio
 import json
+import logging
 from pathlib import Path
 
 import httpx
@@ -262,3 +263,183 @@ def test_chat_module_has_no_optimizer_or_agents():
     assert "AxMCPClient" not in imported
     assert "ax" in imported
     assert "OpenAICompatibleClient" in imported
+
+
+# ── форма исходящего запроса ──────────────────────────────────────────────
+# Дефект дожил до рабочей машины потому, что тесты проверяли `model` и
+# `base_url`, но не то, как выглядит тело запроса.
+
+
+def _capture_request(content: str = ANSWER_OK) -> dict:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json=_completion_body(content))
+
+    async def run():
+        llm = LLMClient(_settings(), transport=_transport(handler))
+        return await llm.complete([ChatMessage(role="user", content="вопрос")])
+
+    captured["answer"] = _run(run())
+    return captured
+
+
+def test_outgoing_request_roles_alternate():
+    body = _capture_request()["body"]
+    roles = [message["role"] for message in body["messages"]]
+    assert roles, "запрос без сообщений"
+    assert all(a != b for a, b in zip(roles, roles[1:])), roles
+
+
+def test_outgoing_request_carries_answer_schema():
+    body = _capture_request()["body"]
+    response_format = body.get("response_format")
+    assert response_format is not None, "схема ответа не отправлена"
+    assert response_format["type"] == "json_schema"
+    schema = response_format["json_schema"]["schema"]
+    assert schema["properties"] == {"answer": {"type": "string"}}
+    assert schema["required"] == ["answer"]
+
+
+def test_outgoing_request_never_asks_for_json_object():
+    body = _capture_request()["body"]
+    assert "json_object" not in json.dumps(body)
+
+
+def test_merging_preserves_every_prompt_fragment():
+    body = _capture_request()["body"]
+    merged = "\n".join(message["content"] for message in body["messages"])
+    assert SYSTEM_PROMPT in merged
+    assert "вопрос" in merged
+    # инструкция о форме ответа приходит от Ax отдельным сообщением и не должна
+    # потеряться при склейке ролей
+    assert "JSON" in merged.upper()
+
+
+def test_unparsable_model_output_is_not_returned_as_answer():
+    prose = "thought\nМодель начала рассуждать вместо ответа"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_completion_body(prose))
+
+    async def run():
+        llm = LLMClient(_settings(), transport=_transport(handler))
+        return await llm.complete([ChatMessage(role="user", content="вопрос")])
+
+    try:
+        answer = _run(run())
+    except AppError as exc:
+        assert exc.status_code == 502
+        assert exc.code == "llm_error"
+    else:
+        raise AssertionError(f"неразобранный ответ выдан как текст ассистента: {answer!r}")
+
+
+# ── проверка совместимости модели ─────────────────────────────────────────
+
+
+def test_structured_output_probe_sends_schema_and_is_cheap():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json=_completion_body())
+
+    async def run():
+        transport = httpx.MockTransport(handler)
+        async with httpx.AsyncClient(transport=transport) as http_client:
+            llm = LLMClient(_settings(), http_client=http_client)
+            await llm.check_structured_output()
+
+    _run(run())
+    assert captured["url"].endswith("/chat/completions")
+    assert captured["body"]["response_format"]["type"] == "json_schema"
+    assert captured["body"]["max_tokens"] == 1
+
+
+def test_model_rejecting_schema_maps_to_model_incompatible():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, json={"error": "response_format not supported"})
+
+    async def run():
+        transport = httpx.MockTransport(handler)
+        async with httpx.AsyncClient(transport=transport) as http_client:
+            llm = LLMClient(_settings(), http_client=http_client)
+            await llm.check_structured_output()
+
+    try:
+        _run(run())
+    except AppError as exc:
+        assert exc.code == "model_incompatible"
+        assert exc.status_code == 503
+    else:
+        raise AssertionError("несовместимая модель не распознана")
+
+
+def test_unreachable_lmstudio_probe_maps_to_unavailable():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused")
+
+    async def run():
+        transport = httpx.MockTransport(handler)
+        async with httpx.AsyncClient(transport=transport) as http_client:
+            llm = LLMClient(_settings(), http_client=http_client)
+            await llm.check_structured_output()
+
+    try:
+        _run(run())
+    except AppError as exc:
+        assert exc.code == "llm_unavailable"
+    else:
+        raise AssertionError("недоступность LM Studio не распознана")
+
+
+# ── отладочное рассуждение модели ─────────────────────────────────────────
+# Рассуждение — клинический текст о случае пациента, поэтому запись выключена
+# по умолчанию и никогда не попадает ни в ответ API, ни в журнал обращений.
+
+REASONING = "PHI_REASONING_MARKER размышление о случае пациента"
+
+
+def _body_with_reasoning() -> dict:
+    body = _completion_body()
+    body["choices"][0]["message"]["reasoning_content"] = REASONING
+    return body
+
+
+def _complete_with_reasoning(**settings_kwargs) -> str:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_body_with_reasoning())
+
+    async def run():
+        llm = LLMClient(_settings(**settings_kwargs), transport=_transport(handler))
+        return await llm.complete([ChatMessage(role="user", content="вопрос")])
+
+    return _run(run())
+
+
+def test_reasoning_is_not_recorded_by_default(caplog):
+    caplog.set_level(logging.DEBUG)
+    answer = _complete_with_reasoning()
+    assert answer == "ok"
+    assert REASONING not in caplog.text
+
+
+def test_reasoning_is_recorded_when_explicitly_enabled(caplog):
+    caplog.set_level(logging.DEBUG, logger="app.reasoning")
+    answer = _complete_with_reasoning(log_model_reasoning=True)
+    assert answer == "ok"
+    assert REASONING in caplog.text
+
+
+def test_reasoning_never_reaches_the_access_log(caplog):
+    caplog.set_level(logging.DEBUG, logger="app.access")
+    _complete_with_reasoning(log_model_reasoning=True)
+    access_records = [r for r in caplog.records if r.name == "app.access"]
+    assert all(REASONING not in r.getMessage() for r in access_records)
+
+
+def test_reasoning_is_not_part_of_the_answer():
+    assert REASONING not in _complete_with_reasoning(log_model_reasoning=True)

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import threading
+import time
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
@@ -24,6 +26,154 @@ from app.settings import Settings, get_settings
 
 CHAT_SIGNATURE = "conversation:string -> answer:string"
 AxTransport = Callable[[dict[str, Any]], Any]
+
+reasoning_logger = logging.getLogger("app.reasoning")
+
+_JSON_TYPES = {
+    "string": "string",
+    "number": "number",
+    "boolean": "boolean",
+}
+
+
+def response_schema(signature: str = CHAT_SIGNATURE) -> dict[str, Any]:
+    """Схема ответа по выходным полям сигнатуры программы.
+
+    MedGemma — reasoning-модель: текстовая инструкция «верни JSON» её не
+    удерживает, она отвечает рассуждением. Схему исполняет сервер модели,
+    ограничивая генерацию грамматикой.
+    """
+    outputs = signature.split("->", 1)[1]
+    properties: dict[str, Any] = {}
+    for field in outputs.split(","):
+        name, _, kind = field.strip().partition(":")
+        if not name:
+            continue
+        properties[name] = {"type": _JSON_TYPES.get(kind.strip(), "string")}
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "assistant_answer",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": properties,
+                "required": list(properties),
+                "additionalProperties": False,
+            },
+        },
+    }
+
+
+def merge_adjacent_roles(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Склеивает подряд идущие сообщения одной роли.
+
+    Ax выносит инструкцию о форме ответа отдельным user-сообщением, из-за чего
+    получается `system, user, user`. Шаблон Gemma требует чередования ролей и
+    отвечает 400 `Conversation roles must alternate`.
+    """
+    merged: list[dict[str, Any]] = []
+    for message in messages:
+        if merged and merged[-1].get("role") == message.get("role"):
+            previous = merged[-1]
+            merged[-1] = {
+                **previous,
+                "content": f"{previous.get('content', '')}\n\n{message.get('content', '')}",
+            }
+            continue
+        merged.append(dict(message))
+    return merged
+
+
+def _log_reasoning(settings: Settings, text: str | None) -> None:
+    """Рассуждение — клинический текст о случае пациента, поэтому по умолчанию
+    не пишется никуда и уходит в отдельный логгер, не в журнал обращений."""
+    if not settings.log_model_reasoning or not text or not text.strip():
+        return
+    reasoning_logger.debug("reasoning: %s", text.strip())
+
+
+def _reasoning_from_body(body: object) -> str | None:
+    if not isinstance(body, dict):
+        return None
+    choices = body.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return None
+    message = choices[0].get("message") if isinstance(choices[0], dict) else None
+    if not isinstance(message, dict):
+        return None
+    value = message.get("reasoning_content")
+    return value if isinstance(value, str) else None
+
+
+class LMStudioCompatibleClient(OpenAICompatibleClient):
+    """Приводит исходящий запрос к виду, который принимают LM Studio и шаблон
+    загруженной модели, не трогая сетевой слой Ax."""
+
+    def __init__(self, *args: Any, settings: Settings, **kwargs: Any) -> None:
+        self._settings = settings
+        super().__init__(*args, **kwargs)
+
+    def _request_json(self, endpoint: str, payload: dict[str, Any], **kwargs: Any):
+        if isinstance(payload, dict) and "messages" in payload:
+            payload = dict(payload)
+            payload["messages"] = merge_adjacent_roles(payload["messages"])
+            payload["response_format"] = response_schema()
+        result = super()._request_json(endpoint, payload, **kwargs)
+        if not kwargs.get("stream"):
+            _log_reasoning(self._settings, _reasoning_from_body(result))
+            return result
+        if not self._settings.log_model_reasoning:
+            return result
+        return self._tee_reasoning(result)
+
+    def _tee_reasoning(self, chunks: Any) -> Any:
+        collected: list[str] = []
+        for chunk in chunks:
+            collected.append(_reasoning_from_sse(chunk))
+            yield chunk
+        _log_reasoning(self._settings, "".join(collected))
+
+
+def _reasoning_from_sse(chunk: object) -> str:
+    raw = chunk.decode("utf-8", "ignore") if isinstance(chunk, (bytes, bytearray)) else str(chunk)
+    out = []
+    for line in raw.split("\n"):
+        line = line.strip()
+        if not line.startswith("data:"):
+            continue
+        payload = line[5:].strip()
+        if not payload or payload == "[DONE]":
+            continue
+        try:
+            parsed = json.loads(payload)
+        except json.JSONDecodeError:
+            continue
+        for choice in parsed.get("choices") or []:
+            delta = choice.get("delta") if isinstance(choice, dict) else None
+            if isinstance(delta, dict) and isinstance(delta.get("reasoning_content"), str):
+                out.append(delta["reasoning_content"])
+    return "".join(out)
+
+
+# Совместимость модели проверяется один раз и переспрашивается по таймауту:
+# врач не должен узнавать о несовместимости из ошибки на свой первый вопрос,
+# но и прогонять генерацию на каждый опрос готовности незачем.
+_COMPAT_TTL_SECONDS = 60.0
+_compat_ok_until = 0.0
+
+
+def reset_compatibility_cache() -> None:
+    global _compat_ok_until
+    _compat_ok_until = 0.0
+
+
+async def ensure_structured_output(llm: "LLMClient") -> None:
+    global _compat_ok_until
+    if time.monotonic() < _compat_ok_until:
+        return
+    await llm.check_structured_output()
+    _compat_ok_until = time.monotonic() + _COMPAT_TTL_SECONDS
 
 
 def format_conversation(messages: list[ChatMessage]) -> str:
@@ -50,7 +200,8 @@ class LLMClient:
     ) -> None:
         self._settings = settings
         self._http_client = http_client
-        self._ai = OpenAICompatibleClient(
+        self._ai = LMStudioCompatibleClient(
+            settings=settings,
             api_key=settings.lmstudio_api_key,
             model=settings.lmstudio_model,
             base_url=settings.lmstudio_base_url,
@@ -60,7 +211,10 @@ class LLMClient:
             model_info=[
                 {
                     "name": settings.lmstudio_model,
-                    "supported": {"structuredOutputModes": ["json_object"]},
+                    # LM Studio принимает только `json_schema` и `text`. В режиме
+                    # `text` Ax не выставляет response_format сам, и схему
+                    # подставляет LMStudioCompatibleClient.
+                    "supported": {"structuredOutputModes": ["text"]},
                 }
             ],
         )
@@ -128,6 +282,43 @@ class LLMClient:
                         yield chunk
 
         return tokens()
+
+    async def check_structured_output(self) -> None:
+        """Минимальный запрос со схемой ответа: принимает ли её модель.
+
+        `max_tokens: 1` — проверяется не качество ответа, а то, что сервер
+        модели вообще принимает ограниченную схемой генерацию.
+        """
+        url = self._settings.lmstudio_base_url.rstrip("/") + "/chat/completions"
+        payload = {
+            "model": self._settings.lmstudio_model,
+            "messages": [{"role": "user", "content": "ok"}],
+            "max_tokens": 1,
+            "response_format": response_schema(),
+        }
+        try:
+            if self._http_client is not None:
+                response = await self._http_client.post(url, json=payload)
+            else:
+                async with httpx.AsyncClient(
+                    timeout=self._settings.lmstudio_timeout_seconds
+                ) as client:
+                    response = await client.post(url, json=payload)
+            response.raise_for_status()
+        except httpx.TimeoutException as exc:
+            raise AppError(
+                504, "llm_timeout", "Превышено время ожидания ответа модели"
+            ) from exc
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            raise AppError(503, "llm_unavailable", "LM Studio недоступен") from exc
+        except httpx.HTTPStatusError as exc:
+            raise AppError(
+                503,
+                "model_incompatible",
+                "Модель не принимает структурированный вывод по схеме: "
+                f"загрузите в LM Studio модель с поддержкой structured output "
+                f"(сейчас настроена {self._settings.lmstudio_model})",
+            ) from exc
 
     async def ping(self) -> None:
         url = self._settings.lmstudio_base_url.rstrip("/") + "/models"

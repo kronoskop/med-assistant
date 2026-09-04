@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Клинический справочный ассистент</title>
+<!-- Шрифты подключаются с CDN, но каждый стек имеет полный локальный запасной
+     вариант: на машине без доступа в интернет теряется только гарнитура. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=PT+Serif:wght@400;700&family=Manrope:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/ui/styles.css">
+</head>
+<body>
+<div class="app">
+
+  <aside class="side">
+    <div class="side-org">
+      <img id="org-logo" src="https://uzaig.uz/images/tild3262-3864-4165-a663-353530316439__logosmall.png" alt="">
+      <div class="side-org-text">
+        <span class="side-org-name" data-t="orgShort"></span>
+        <span class="side-org-sub" data-t="orgSub"></span>
+      </div>
+    </div>
+
+    <button class="side-new" id="new-chat"></button>
+
+    <div class="side-history sc">
+      <span class="side-label" data-t="historyLabel"></span>
+      <div id="history-list"></div>
+      <span class="side-hint" data-t="historyNote"></span>
+    </div>
+
+    <div class="side-foot">
+      <div class="side-note strong">
+        <span class="icon" data-icon="user-circle"></span>
+        <span data-t="whoami"></span>
+      </div>
+      <div class="side-note">
+        <span class="icon" data-icon="shield-check"></span>
+        <span data-t="privacyNote"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="head">
+      <div class="head-id">
+        <div class="head-title">
+          <h1 data-t="botName"></h1>
+          <span class="head-badge" data-t="protoNote"></span>
+        </div>
+        <div class="head-status">
+          <span class="dot" id="status-dot" data-state="checking"></span>
+          <span id="status-text"></span>
+        </div>
+      </div>
+
+      <div class="tabs" id="density-tabs">
+        <button data-density="dense" data-t="dDense"></button>
+        <button data-density="airy" data-t="dAiry"></button>
+      </div>
+
+      <div class="tabs" id="lang-tabs">
+        <button data-lang="uz">O‘zbekcha</button>
+        <button data-lang="ru">Русский</button>
+        <button data-lang="en">English</button>
+      </div>
+    </header>
+
+    <div class="thread sc" id="thread">
+      <div class="col" id="col"></div>
+    </div>
+
+    <div class="composer">
+      <div class="composer-col">
+        <div class="composer-row">
+          <textarea id="input" rows="2"></textarea>
+          <button class="send" id="send" type="button"></button>
+          <button class="stop" id="stop" type="button" hidden></button>
+        </div>
+        <span class="composer-note" data-t="disclaimer"></span>
+      </div>
+    </div>
+  </main>
+
+</div>
+
+<script src="/ui/data.js"></script>
+<script src="/ui/app.js"></script>
+</body>
+</html>
