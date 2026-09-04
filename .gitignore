@@ -9,3 +9,7 @@ dist/
 build/
 .env
 .DS_Store
+
+# Собранный канвас Claude Design: ~2.5 МБ упакованного редактора,
+# пересобирается из .dc.html и canvas.json
+design/**/clinicompass-interface.html
