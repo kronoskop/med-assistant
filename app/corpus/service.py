@@ -57,15 +57,35 @@ def retrieve(question: str, settings: Settings | None = None, *, corpus: Corpus 
     from app.corpus.embed import embed_query  # локальный импорт: сеть только когда есть что искать
 
     vectors = embed_query(question, settings)
-    hits = tuple(
-        corpus.search(vectors[0], top_k=settings.retrieval_top_k, min_score=settings.retrieval_min_score)
+    candidates = corpus.search(
+        vectors[0],
+        top_k=settings.retrieval_top_k * 4,
+        min_score=settings.retrieval_min_score,
     )
+    hits = tuple(_prefer_prose(candidates, settings.retrieval_top_k, settings.retrieval_max_tables))
     support = tuple(corpus.support_documents())
     if hits:
         return Retrieval(Grounding.GROUNDED, hits, support)
     if support:
         return Retrieval(Grounding.SUPPORT_ONLY, (), support)
     return Retrieval(Grounding.NO_MATCH)
+
+
+def _prefer_prose(candidates: list[Hit], top_k: int, max_tables: int) -> list[Hit]:
+    """Проза вперёд, таблиц не больше нескольких.
+
+    Содержимое таблицы модели не показывается, поэтому набор из одних таблиц
+    оставляет её без материала: ответ вырождается в «смотрите таблицу».
+    Таблицы остаются в выдаче — на них можно сослаться, — но не вытесняют
+    фрагменты, по которым можно ответить по существу.
+    """
+    prose = [h for h in candidates if not h.fragment.is_table]
+    tables = [h for h in candidates if h.fragment.is_table]
+    chosen = prose[:top_k]
+    room = max(top_k - len(chosen), 0) + min(max_tables, top_k)
+    chosen += tables[: min(max_tables, room)]
+    chosen.sort(key=lambda h: -h.score)
+    return chosen[: top_k + max_tables]
 
 
 def render_fragments(hits: tuple[Hit, ...]) -> str:
@@ -80,7 +100,8 @@ def render_fragments(hits: tuple[Hit, ...]) -> str:
     for hit in hits:
         fragment = hit.fragment
         body = (
-            "Таблица. Её содержимое не приводится — сошлись на неё и отправь врача к документу."
+            "Здесь таблица, её содержимое не приводится. Отвечай по остальным фрагментам; "
+            "на таблицу можно сослаться дополнительно."
             if fragment.is_table
             else fragment.text
         )

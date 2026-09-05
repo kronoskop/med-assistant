@@ -267,7 +267,7 @@ function finish() {
 function paintStream(text) {
   const node = document.getElementById('streaming-text');
   if (!node) { render(); return; }
-  node.textContent = text;
+  node.textContent = plainText(text);
   node.appendChild(el('span', { class: 'caret' }));
   scrollThread();
 }
@@ -495,11 +495,25 @@ function renderError(item) {
 // пронумеровать подтверждённые и убрать всё остальное.
 const CITATION = /\[([^\[\]]+:[^\[\]]+:\d+:\d+)\]|\[(\d+)\]/g;
 
+// Модель возвращает Markdown, а поле схемы — строка, поэтому переносы
+// приезжают литеральными «\n». Приводим к простому тексту.
+function plainText(raw) {
+  return String(raw || '')
+    .replace(/\\r\\n/g, '\n')
+    .replace(/\\n/g, '\n')
+    .replace(/\\t/g, ' ')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/(^|[^\w])\*(.+?)\*(?!\w)/g, '$1$2')
+    .replace(/^[ \t]*[*+][ \t]+/gm, '— ')
+    .replace(/^[ \t]*#+[ \t]*/gm, '')
+    .replace(/\n{3,}/g, '\n\n');
+}
+
 function renderAnswerText(item) {
   const node = el('div', { class: 'bot-text' });
   const sources = item.sources || [];
   const byId = new Map(sources.map((s, i) => [s.id, i]));
-  const text = String(item.content || '');
+  const text = plainText(item.content);
   let cursor = 0;
   let match;
   CITATION.lastIndex = 0;

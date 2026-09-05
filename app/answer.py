@@ -89,6 +89,22 @@ def last_question(messages) -> str:
 _MARKER = re.compile(r"\[([^\[\]]+:[^\[\]]+:\d+:\d+)\]")
 
 
+def normalize_answer(text: str) -> str:
+    """Приводит ответ к простому тексту.
+
+    Модель возвращает разметку Markdown, а поле схемы — строка, поэтому
+    переносы приезжают как литеральные «\\n». В ленте это выглядело как
+    сломанный вывод: звёздочки и обратные слэши прямо в тексте.
+    """
+    out = text.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\t", " ")
+    out = re.sub(r"\*\*(.+?)\*\*", r"\1", out)          # жирный
+    out = re.sub(r"(?<!\w)\*(.+?)\*(?!\w)", r"\1", out)   # курсив
+    out = re.sub(r"^\s*[*+]\s+", "— ", out, flags=re.M)   # маркеры списка
+    out = re.sub(r"^\s*#+\s*", "", out, flags=re.M)       # заголовки
+    out = re.sub(r"\n{3,}", "\n\n", out)
+    return out.strip()
+
+
 def weave_citations(text: str, hits: tuple[Hit, ...]) -> tuple[str, list[SourceFragment]]:
     """Заменяет идентификаторы в тексте на номера сносок.
 
@@ -108,7 +124,7 @@ def weave_citations(text: str, hits: tuple[Hit, ...]) -> tuple[str, list[SourceF
             order.append(fragment_id)
         return f"[{order.index(fragment_id) + 1}]"
 
-    woven = _MARKER.sub(replace, text)
+    woven = _MARKER.sub(replace, normalize_answer(text))
     woven = re.sub(r" +([.,;:])", r"\1", woven)
     woven = re.sub(r"[ \t]{2,}", " ", woven).strip()
     return woven, confirmed_sources(order, hits)

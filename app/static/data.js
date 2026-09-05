@@ -1,5 +1,6 @@
 // СГЕНЕРИРОВАНО из артборда Claude Design — правьте макет, не этот файл.
-// Темы интерфейса приходят из корпуса (topics.js), источники — из ответа API.
+// Темы приходят из topics.js, источники — из ответа API.
+// В текстах для врача не должно быть слова «корпус»: это внутренний термин.
 const I18N = {
   "ru": {
     "orgShort": "ГУ «РСНПМЦЗМиР»",
@@ -12,7 +13,7 @@ const I18N = {
     "botStatus": "Поддержка решения врача · не ставит диагноз",
     "protoNote": "прототип · цвета подобраны приближённо",
     "greetTitle": "О каком клиническом вопросе речь?",
-    "greetBody": "Опишите случай без персональных данных: срок гестации, значимый анамнез, объективные данные. Отвечаю только по документам корпуса и показываю фрагменты, на которых построен ответ. Диагноз, назначение и объём обследования остаются за вами.",
+    "greetBody": "Опишите случай без персональных данных: срок гестации, значимый анамнез, объективные данные. Отвечаю только по документам центра и показываю фрагменты, на которых построен ответ. Диагноз, назначение и объём обследования остаются за вами.",
     "chipsLabel": "Ещё вопросы",
     "placeholder": "Например: 32 недели, АД 158/104, протеинурия — что оценить в первую очередь?",
     "disclaimer": "Ответы носят справочный характер и поддерживают решение врача: это не диагноз и не назначение. Пороговые значения сверяйте с действующим национальным клиническим протоколом.",
@@ -56,8 +57,8 @@ const I18N = {
     "sourcesNote": "утверждение без сноски не подтверждено",
     "supportTitle": "Подкрепление — ВОЗ",
     "supportNote": "Международные документы приведены как ориентир. При расхождении приоритет остаётся за действующим протоколом центра.",
-    "notFoundTitle": "В корпусе ничего не найдено по этому вопросу",
-    "coveredTitle": "Темы, покрытые корпусом",
+    "notFoundTitle": "В документах центра по этому вопросу ничего не найдено",
+    "coveredTitle": "Что есть в документах центра",
     "openDoc": "Открыть документ",
     "tableInDoc": "Таблица — приведена в документе",
     "settingsTitle": "Настройки",
@@ -76,7 +77,7 @@ const I18N = {
     "botStatus": "Shifokor qaroriga yordam · tashxis qo‘ymaydi",
     "protoNote": "prototip · ranglar taqriban tanlangan",
     "greetTitle": "Qanday klinik savol bo‘yicha yordam kerak?",
-    "greetBody": "Holatni shaxsiy maʼlumotlarsiz yozing: gestatsiya muddati, muhim anamnez, obyektiv koʻrsatkichlar. Faqat korpus hujjatlari asosida javob beraman va javob qurilgan parchalarni koʻrsataman. Tashxis, tayinlash va tekshiruv hajmi sizda qoladi.",
+    "greetBody": "Holatni shaxsiy maʼlumotlarsiz yozing: gestatsiya muddati, muhim anamnez, obyektiv koʻrsatkichlar. Faqat markaz hujjatlari asosida javob beraman va javob qurilgan parchalarni koʻrsataman. Tashxis, tayinlash va tekshiruv hajmi sizda qoladi.",
     "chipsLabel": "Yana savollar",
     "placeholder": "Masalan: 32 hafta, AQB 158/104, proteinuriya — birinchi navbatda nimani baholash kerak?",
     "disclaimer": "Javoblar maʼlumot tarzida bo‘lib, shifokor qaroriga yordam beradi: bu tashxis ham, tayinlash ham emas. Chegaraviy qiymatlarni amaldagi milliy klinik protokol bilan solishtiring.",
@@ -120,8 +121,8 @@ const I18N = {
     "sourcesNote": "havolasiz tasdiq yoʻq",
     "supportTitle": "Mustahkamlash — JSST",
     "supportNote": "Xalqaro hujjatlar mo‘ljal sifatida keltirilgan. Farq boʻlsa, ustuvorlik markazning amaldagi protokolida qoladi.",
-    "notFoundTitle": "Bu savol boʻyicha korpusda hech narsa topilmadi",
-    "coveredTitle": "Korpus qamragan mavzular",
+    "notFoundTitle": "Markaz hujjatlarida bu savol boʻyicha hech narsa topilmadi",
+    "coveredTitle": "Markaz hujjatlarida nima bor",
     "openDoc": "Hujjatni ochish",
     "tableInDoc": "Jadval — hujjatda keltirilgan",
     "settingsTitle": "Sozlamalar",
@@ -140,7 +141,7 @@ const I18N = {
     "botStatus": "Decision support · does not diagnose",
     "protoNote": "prototype · colours approximated",
     "greetTitle": "What is the clinical question?",
-    "greetBody": "Describe the case without personal data: gestational age, relevant history, objective findings. I answer only from the corpus documents and show the fragments the answer rests on. Diagnosis, prescribing and the extent of workup remain yours.",
+    "greetBody": "Describe the case without personal data: gestational age, relevant history, objective findings. I answer only from the centre's documents and show the fragments the answer rests on. Diagnosis, prescribing and the extent of workup remain yours.",
     "chipsLabel": "More questions",
     "placeholder": "e.g. 32 weeks, BP 158/104, proteinuria — what should I assess first?",
     "disclaimer": "Answers are reference information supporting the clinician's decision: not a diagnosis and not a prescription. Verify every threshold against the current national clinical protocol.",
@@ -184,8 +185,8 @@ const I18N = {
     "sourcesNote": "a claim without a footnote is unconfirmed",
     "supportTitle": "Reinforcement — WHO",
     "supportNote": "International documents are given as a reference. Where they differ, the centre’s current protocol takes precedence.",
-    "notFoundTitle": "Nothing found in the corpus for this question",
-    "coveredTitle": "Topics covered by the corpus",
+    "notFoundTitle": "Nothing found in the centre's documents for this question",
+    "coveredTitle": "What the centre's documents cover",
     "openDoc": "Open document",
     "tableInDoc": "A table — see the document",
     "settingsTitle": "Settings",
