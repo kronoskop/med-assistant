@@ -3,116 +3,116 @@
 const TOPICS = {
   "ru": [
     {
-      "documentId": "placenta-accreta",
+      "documentId": "mz-781",
       "number": "01",
-      "icon": "drop",
-      "q": "Врастание и предлежание плаценты — что оценить при подозрении?"
-    },
-    {
-      "documentId": "multiple-pregnancy",
-      "number": "02",
-      "icon": "baby",
-      "q": "Монохориальная двойня: как строить наблюдение?"
-    },
-    {
-      "documentId": "perineal-tears",
-      "number": "03",
-      "icon": "first-aid-kit",
-      "q": "Разрывы промежности: классификация и тактика восстановления"
-    },
-    {
-      "documentId": "female-infertility",
-      "number": "04",
       "icon": "test-tube",
-      "q": "Женское бесплодие: с чего начинать обследование пары?"
+      "q": "Гестационный сахарный диабет: пороги и тактика"
     },
     {
-      "documentId": "bartholin-gland",
+      "documentId": "mz-777",
+      "number": "02",
+      "icon": "drop",
+      "q": "Ведение беременных с железодефицитной анемией"
+    },
+    {
+      "documentId": "mz-779",
+      "number": "03",
+      "icon": "baby",
+      "q": "Антенатальный уход: ведение беременных групп риска"
+    },
+    {
+      "documentId": "mz-785",
+      "number": "04",
+      "icon": "first-aid-kit",
+      "q": "Кесарево сечение: показания и подготовка"
+    },
+    {
+      "documentId": "mz-806",
       "number": "05",
       "icon": "heartbeat",
-      "q": "Болезни бартолиновой железы: когда показано дренирование?"
+      "q": "Сепсис и септический шок в акушерстве"
     },
     {
-      "documentId": "cervicitis-vaginitis",
+      "documentId": "mz-808",
       "number": "06",
       "icon": "sun",
-      "q": "Воспаление шейки матки и влагалища: план обследования"
+      "q": "Скрининг рака шейки матки: тактика ведения"
     }
   ],
   "uz": [
     {
-      "documentId": "placenta-accreta",
+      "documentId": "mz-781",
       "number": "01",
-      "icon": "drop",
-      "q": "Platsentaning oʻsib kirishi va oldinda yotishi — nimani baholash kerak?"
-    },
-    {
-      "documentId": "multiple-pregnancy",
-      "number": "02",
-      "icon": "baby",
-      "q": "Monoxorial egizak: kuzatuvni qanday qurish kerak?"
-    },
-    {
-      "documentId": "perineal-tears",
-      "number": "03",
-      "icon": "first-aid-kit",
-      "q": "Oraliq yorilishlari: tasnifi va tiklash taktikasi"
-    },
-    {
-      "documentId": "female-infertility",
-      "number": "04",
       "icon": "test-tube",
-      "q": "Ayollar bepushtligi: juftni tekshirishni nimadan boshlash kerak?"
+      "q": "Gestatsion qandli diabet: chegaralar va taktika"
     },
     {
-      "documentId": "bartholin-gland",
+      "documentId": "mz-777",
+      "number": "02",
+      "icon": "drop",
+      "q": "Temir tanqisligi anemiyasi bilan homiladorlarni olib borish"
+    },
+    {
+      "documentId": "mz-779",
+      "number": "03",
+      "icon": "baby",
+      "q": "Antenatal parvarish: xavf guruhidagi homiladorlar"
+    },
+    {
+      "documentId": "mz-785",
+      "number": "04",
+      "icon": "first-aid-kit",
+      "q": "Kesar kesish: koʻrsatmalar va tayyorgarlik"
+    },
+    {
+      "documentId": "mz-806",
       "number": "05",
       "icon": "heartbeat",
-      "q": "Bartolin bezi kasalliklari: drenaj qachon koʻrsatilgan?"
+      "q": "Akusherlikda sepsis va septik shok"
     },
     {
-      "documentId": "cervicitis-vaginitis",
+      "documentId": "mz-808",
       "number": "06",
       "icon": "sun",
-      "q": "Bachadon boʻyni va vagina yalligʻlanishi: tekshiruv rejasi"
+      "q": "Bachadon boʻyni saratoni skriningi: olib borish taktikasi"
     }
   ],
   "en": [
     {
-      "documentId": "placenta-accreta",
+      "documentId": "mz-781",
       "number": "01",
-      "icon": "drop",
-      "q": "Placenta accreta and praevia — what should I assess on suspicion?"
-    },
-    {
-      "documentId": "multiple-pregnancy",
-      "number": "02",
-      "icon": "baby",
-      "q": "Monochorionic twins: how should monitoring be structured?"
-    },
-    {
-      "documentId": "perineal-tears",
-      "number": "03",
-      "icon": "first-aid-kit",
-      "q": "Perineal tears: classification and repair approach"
-    },
-    {
-      "documentId": "female-infertility",
-      "number": "04",
       "icon": "test-tube",
-      "q": "Female infertility: where does the couple's workup start?"
+      "q": "Gestational diabetes: thresholds and management"
     },
     {
-      "documentId": "bartholin-gland",
+      "documentId": "mz-777",
+      "number": "02",
+      "icon": "drop",
+      "q": "Managing pregnancy with iron-deficiency anaemia"
+    },
+    {
+      "documentId": "mz-779",
+      "number": "03",
+      "icon": "baby",
+      "q": "Antenatal care: managing high-risk pregnancies"
+    },
+    {
+      "documentId": "mz-785",
+      "number": "04",
+      "icon": "first-aid-kit",
+      "q": "Caesarean section: indications and preparation"
+    },
+    {
+      "documentId": "mz-806",
       "number": "05",
       "icon": "heartbeat",
-      "q": "Bartholin gland disease: when is drainage indicated?"
+      "q": "Sepsis and septic shock in obstetrics"
     },
     {
-      "documentId": "cervicitis-vaginitis",
+      "documentId": "mz-808",
       "number": "06",
       "icon": "sun",
-      "q": "Cervicitis and vaginitis: the examination plan"
+      "q": "Cervical cancer screening: management"
     }
   ]
 };
