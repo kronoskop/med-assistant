@@ -86,12 +86,27 @@ def confirmed_questions(claimed, hits: tuple[Hit, ...]) -> list[Clarification]:
     return out
 
 
-def confirmed_conflicts(claimed) -> list[Conflict]:
-    """Отметка без обеих сторон вычёркивается.
+def doctor_words(messages) -> str:
+    """Всё, что сказал врач. Ответы ассистента сюда не входят: противоречие
+    ищется в сведениях о случае, а не в том, что модель успела написать."""
+    return "\n".join(m.content for m in messages if m.role == "user")
 
-    Врач должен видеть, что именно не сходится: «данные противоречивы» без
+
+def _comparable(text: str) -> str:
+    """Приводит цитату к виду, в котором её можно искать в словах врача:
+    пробелы схлопнуты, обрамляющие кавычки и знаки препинания сняты."""
+    return re.sub(r"\s+", " ", text).strip(" .,;:!?—–-«»\"'").casefold()
+
+
+def confirmed_conflicts(claimed, said: str = "") -> list[Conflict]:
+    """Оставляет отметки, обе стороны которых врач действительно произнёс.
+
+    Сторона — цитата из слов врача, и непроверенная цитата приписала бы ему то,
+    чего он не говорил: та же фальшивая трассируемость, от которой защищены
+    сноски. Отметка без обеих сторон вычёркивается — «данные противоречивы» без
     указания на что подрывает доверие ко всему ответу.
     """
+    source = _comparable(said)
     out: list[Conflict] = []
     seen: set[tuple[str, str]] = set()
     for item in claimed:
@@ -99,10 +114,18 @@ def confirmed_conflicts(claimed) -> list[Conflict]:
             continue
         first = str(item.get("first") or "").strip()
         second = str(item.get("second") or "").strip()
-        key = (first.casefold(), second.casefold())
-        if not first or not second or key[0] == key[1] or key in seen:
+        if not first or not second:
             continue
-        seen.add(key)
+        left, right = _comparable(first), _comparable(second)
+        # Вложенность — признак того, что модель сложила в одну отметку
+        # предложение целиком и его же часть: сторон здесь не две, а одна.
+        if left in right or right in left:
+            continue
+        if left not in source or right not in source:
+            continue
+        if (left, right) in seen or (right, left) in seen:
+            continue
+        seen.add((left, right))
         out.append(Conflict(first=first, second=second))
     return out
 

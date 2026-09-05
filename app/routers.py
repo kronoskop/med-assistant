@@ -8,6 +8,7 @@ from app.answer import (
     confirmed_conflicts,
     confirmed_questions,
     confirmed_sources,
+    doctor_words,
     last_question,
     refusal_text,
     support_documents,
@@ -60,10 +61,11 @@ async def chat(
         return _response(text, retrieval, [])
 
     fragments = render_fragments(retrieval.hits)
+    said = doctor_words(body.messages)
     if body.stream:
         claims = Claims()
         chunks = await llm.start_chat_stream(body.messages, fragments, claims)
-        return StreamingResponse(_sse(chunks, claims, retrieval), media_type="text/event-stream")
+        return StreamingResponse(_sse(chunks, claims, retrieval, said), media_type="text/event-stream")
 
     answer = await llm.complete(body.messages, fragments)
     woven, inline = weave_citations(answer.text, retrieval.hits)
@@ -71,10 +73,10 @@ async def chat(
     sources, grounded, _ = _settle(woven, retrieval, claimed)
     if not grounded:
         return _response(refusal_text(Grounding.NO_MATCH), retrieval, [])
-    return _response(woven, retrieval, claimed, answer.questions, answer.conflicts)
+    return _response(woven, retrieval, claimed, answer.questions, answer.conflicts, said)
 
 
-def _response(text: str, retrieval: Retrieval, claimed, questions=(), conflicts=()) -> ChatResponse:
+def _response(text: str, retrieval: Retrieval, claimed, questions=(), conflicts=(), said: str = "") -> ChatResponse:
     """Уточнения приходят пустыми по умолчанию: к отказу их не добавляют —
     его смысл в том, что подтверждать нечего, и спрашивать не о чем."""
     sources, grounded, status = _settle(text, retrieval, claimed)
@@ -86,7 +88,7 @@ def _response(text: str, retrieval: Retrieval, claimed, questions=(), conflicts=
         sources=sources,
         support=support_documents(retrieval),
         questions=confirmed_questions(questions, retrieval.hits),
-        conflicts=confirmed_conflicts(conflicts),
+        conflicts=confirmed_conflicts(conflicts, said),
     )
 
 
@@ -105,7 +107,7 @@ def _settle(text: str, retrieval: Retrieval, claimed):
     return sources, True, retrieval.status.value
 
 
-def _sources_event(retrieval: Retrieval, claims: Claims) -> str:
+def _sources_event(retrieval: Retrieval, claims: Claims, said: str = "") -> str:
     sources, grounded, status = _settle("", retrieval, claims.source_ids)
     payload = {
         "grounded": grounded,
@@ -113,15 +115,17 @@ def _sources_event(retrieval: Retrieval, claims: Claims) -> str:
         "sources": [s.model_dump() for s in sources],
         "support": [d.model_dump() for d in support_documents(retrieval)],
         "questions": [q.model_dump() for q in confirmed_questions(claims.questions, retrieval.hits)],
-        "conflicts": [c.model_dump() for c in confirmed_conflicts(claims.conflicts)],
+        "conflicts": [c.model_dump() for c in confirmed_conflicts(claims.conflicts, said)],
     }
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
-async def _sse(chunks: AsyncIterator[str], claims: Claims, retrieval: Retrieval) -> AsyncIterator[str]:
+async def _sse(
+    chunks: AsyncIterator[str], claims: Claims, retrieval: Retrieval, said: str = ""
+) -> AsyncIterator[str]:
     async for text in chunks:
         yield f"data: {json.dumps({'text': text}, ensure_ascii=False)}\n\n"
-    yield _sources_event(retrieval, claims)
+    yield _sources_event(retrieval, claims, said)
     yield "data: [DONE]\n\n"
 
 

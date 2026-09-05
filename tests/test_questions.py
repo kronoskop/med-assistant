@@ -144,36 +144,92 @@ def test_uncited_answer_refuses_without_questions(client):
 
 # ── противоречия внутри слов врача ────────────────────────────────────────
 
+СЛУЧАЙ = "Первая беременность, но в анамнезе двое родов. Как вести ГСД?"
+
+
+def _conflicts(client, *items, said: str = СЛУЧАЙ):
+    hit = make_hit(fragment_id="doc:ru:1:0")
+    _use(grounded(hit), claims=["doc:ru:1:0"], conflicts=list(items))
+    return _post(client, said).json()["conflicts"]
+
 
 def test_conflict_shows_both_sides(client):
-    hit = make_hit(fragment_id="doc:ru:1:0")
-    _use(
-        grounded(hit),
-        claims=["doc:ru:1:0"],
-        conflicts=[{"first": "срок 12 недель", "second": "по УЗИ 28 недель"}],
+    got = _conflicts(client, {"first": "Первая беременность", "second": "в анамнезе двое родов"})
+    assert got == [{"first": "Первая беременность", "second": "в анамнезе двое родов"}]
+
+
+def test_side_the_doctor_never_said_is_dropped(client):
+    """Сторона — цитата из слов врача. Непроверенная приписала бы ему то, чего
+    он не говорил: та же фальшивая трассируемость, что и выдуманная сноска."""
+    got = _conflicts(client, {"first": "Первая беременность", "second": "сахарный диабет 1 типа"})
+    assert got == [], "приписанная врачу цитата попала в ответ"
+
+
+def test_quote_matches_despite_case_and_punctuation(client):
+    """Модель цитирует с кавычками и точкой — это та же фраза, не подделка."""
+    got = _conflicts(client, {"first": "«первая беременность»", "second": "В анамнезе двое родов."})
+    assert len(got) == 1
+
+
+def test_sentence_and_its_own_part_are_not_two_sides(client):
+    """Вложенность — признак того, что модель сложила в отметку предложение
+    целиком и его же часть: сторон здесь не две, а одна."""
+    got = _conflicts(
+        client,
+        {"first": "Первая беременность, но в анамнезе двое родов", "second": "двое родов"},
     )
-    body = _post(client).json()
-    assert body["conflicts"] == [{"first": "срок 12 недель", "second": "по УЗИ 28 недель"}]
+    assert got == []
+
+
+def test_two_mismatches_come_as_two_marks(client):
+    """Разные несовпадения не складываются в одну отметку."""
+    said = "Срок 12 недель, по УЗИ 28 недель. Первая беременность, в анамнезе двое родов."
+    got = _conflicts(
+        client,
+        {"first": "Срок 12 недель", "second": "по УЗИ 28 недель"},
+        {"first": "Первая беременность", "second": "в анамнезе двое родов"},
+        said=said,
+    )
+    assert [(c["first"], c["second"]) for c in got] == [
+        ("Срок 12 недель", "по УЗИ 28 недель"),
+        ("Первая беременность", "в анамнезе двое родов"),
+    ]
 
 
 def test_one_sided_conflict_is_dropped(client):
-    hit = make_hit(fragment_id="doc:ru:1:0")
-    _use(
-        grounded(hit),
-        claims=["doc:ru:1:0"],
-        conflicts=[{"first": "данные противоречивы", "second": ""}, {"second": "только вторая"}],
+    got = _conflicts(
+        client,
+        {"first": "Первая беременность", "second": ""},
+        {"second": "в анамнезе двое родов"},
     )
-    assert _post(client).json()["conflicts"] == [], "отметка без обеих сторон попала в ответ"
+    assert got == [], "отметка без обеих сторон попала в ответ"
 
 
 def test_conflict_of_a_statement_with_itself_is_dropped(client):
-    hit = make_hit(fragment_id="doc:ru:1:0")
-    _use(
-        grounded(hit),
-        claims=["doc:ru:1:0"],
-        conflicts=[{"first": "срок 12 недель", "second": "Срок 12 недель"}],
+    got = _conflicts(client, {"first": "Первая беременность", "second": "первая беременность"})
+    assert got == []
+
+
+def test_the_same_pair_reversed_appears_once(client):
+    got = _conflicts(
+        client,
+        {"first": "Первая беременность", "second": "в анамнезе двое родов"},
+        {"first": "в анамнезе двое родов", "second": "Первая беременность"},
     )
-    assert _post(client).json()["conflicts"] == []
+    assert len(got) == 1
+
+
+def test_assistant_words_are_not_a_source_of_quotes(client):
+    """Противоречие ищется в сведениях о случае, а не в тексте модели."""
+    from app.answer import doctor_words
+    from app.schemas import ChatMessage
+
+    said = doctor_words([
+        ChatMessage(role="user", content="Первая беременность"),
+        ChatMessage(role="assistant", content="в анамнезе двое родов"),
+    ])
+    assert "Первая беременность" in said
+    assert "двое родов" not in said
 
 
 # ── поток ─────────────────────────────────────────────────────────────────
