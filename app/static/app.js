@@ -341,6 +341,18 @@ function renderGreeting() {
   ]);
 }
 
+// Извлечение из PDF иногда даёт расплющенную таблицу вместо прозы. Показываем
+// начало фрагмента: судить по нему уже можно, а полный текст — в документе.
+const QUOTE_LIMIT = 360;
+
+function quote(text) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim();
+  if (clean.length <= QUOTE_LIMIT) return '«' + clean + '»';
+  const cut = clean.slice(0, QUOTE_LIMIT);
+  const stop = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('; '), cut.lastIndexOf(', '));
+  return '«' + (stop > QUOTE_LIMIT * 0.6 ? cut.slice(0, stop + 1) : cut) + ' …»';
+}
+
 function renderSources(sources) {
   return el('div', { class: 'card' }, [
     el('div', { class: 'card-head' }, [
@@ -353,7 +365,7 @@ function renderSources(sources) {
         el('div', { class: 'source', id: 'src-' + s.id }, [
           el('span', { class: 'source-num', text: String(i + 1) }),
           el('div', { class: 'source-body' }, [
-            el('div', { class: 'source-quote', text: '«' + s.text + '»' }),
+            el('div', { class: 'source-quote', text: quote(s.text) }),
             el('div', { class: 'source-meta' }, [
               icon('file-text'),
               el('span', { class: 'source-doc', text: s.document_title }),
