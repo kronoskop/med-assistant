@@ -16,6 +16,8 @@ const ICONS = {
   'plus': 'M12 5v14M5 12h14',
   'user-circle': 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18M12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6M6.2 18.6a7 7 0 0 1 11.6 0',
   'shield-check': 'M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6zM9 12l2 2 4-4',
+  'gear': 'M12 15.4a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8M19.3 13.1a7.4 7.4 0 0 0 0-2.2l1.9-1.5-2-3.4-2.3 1a7.4 7.4 0 0 0-1.9-1.1L14.7 3.4h-3.9l-.3 2.5a7.4 7.4 0 0 0-1.9 1.1l-2.3-1-2 3.4 1.9 1.5a7.4 7.4 0 0 0 0 2.2l-1.9 1.5 2 3.4 2.3-1a7.4 7.4 0 0 0 1.9 1.1l.3 2.5h3.9l.3-2.5a7.4 7.4 0 0 0 1.9-1.1l2.3 1 2-3.4z',
+  'check': 'M5 12.5l4.5 4.5L19 7.5',
   'stethoscope': 'M6 3v5a4 4 0 0 0 8 0V3M10 12v2a4 4 0 0 0 8 0v-1M18 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4',
   'book-bookmark': 'M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5zM10 3v7l2.5-2 2.5 2V3',
   'arrow-up-right': 'M8 16L16 8M9.5 8H16v6.5',
@@ -33,6 +35,28 @@ const ICONS = {
   'first-aid-kit': 'M3.5 7.5h17v12.5h-17zM9 7.5V5h6v2.5M12 11.5v5M9.5 14h5',
   'sun': 'M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4',
 };
+
+// Фирменный знак: компасная стрелка из двух долей разной плотности.
+// Вертикальная ось вдвое длиннее горизонтальной — это компас, а не звёздочка.
+function mark(size, color) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('style', `width:${size}px;height:${size}px;flex:none;display:block`);
+  const shapes = [
+    ['M12 1.6 Q13.1 10.6 17.9 12 Q13.1 13.4 12 22.4 Z', '1'],
+    ['M12 1.6 Q10.9 10.6 6.1 12 Q10.9 13.4 12 22.4 Z', '.58'],
+  ];
+  for (const [d, opacity] of shapes) {
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('fill', color || '#ffffff');
+    path.setAttribute('opacity', opacity);
+    svg.appendChild(path);
+  }
+  return svg;
+}
 
 function icon(name, cls) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -73,7 +97,6 @@ function el(tag, props, children) {
 // станции нельзя.
 const state = {
   lang: 'ru',
-  density: 'dense',
   chats: [],
   activeId: null,
   consult: 0,
@@ -541,7 +564,7 @@ function renderAssistant(item) {
   }
 
   return el('div', { class: 'bot' }, [
-    el('span', { class: 'bot-avatar' }, [icon('stethoscope')]),
+    el('span', { class: 'bot-avatar' }, [mark(14)]),
     el('div', { class: 'bot-body' }, body),
   ]);
 }
@@ -616,7 +639,6 @@ function scrollThread() {
 // ── статические подписи и переключатели ───────────────────
 function applyStatic() {
   document.documentElement.lang = state.lang;
-  document.documentElement.setAttribute('data-density', state.density);
 
   for (const node of document.querySelectorAll('[data-t]')) {
     node.textContent = T()[node.getAttribute('data-t')] || '';
@@ -624,6 +646,10 @@ function applyStatic() {
   for (const node of document.querySelectorAll('[data-icon]')) {
     node.replaceChildren(icon(node.getAttribute('data-icon')));
   }
+
+  document.getElementById('brand-mark').replaceChildren(mark(18));
+  document.getElementById('settings-lang').textContent = T().langNative;
+  renderLanguages();
 
   const newBtn = document.getElementById('new-chat');
   newBtn.replaceChildren(icon('plus'), document.createTextNode(T().newChat));
@@ -635,25 +661,57 @@ function applyStatic() {
   input.placeholder = T().placeholder;
   input.setAttribute('aria-label', T().placeholder);
 
-  document.getElementById('org-logo').alt = T().orgShort;
 
-  for (const btn of document.querySelectorAll('#lang-tabs button')) {
-    btn.setAttribute('aria-pressed', btn.dataset.lang === state.lang ? 'true' : 'false');
-    btn.title = T().modelLangNote;
-  }
-  for (const btn of document.querySelectorAll('#density-tabs button')) {
-    btn.setAttribute('aria-pressed', btn.dataset.density === state.density ? 'true' : 'false');
-  }
   paintStatus();
 }
 
-function init() {
-  // Логотип центра тянется из сети. Без интернета он не загрузится — прячем его,
-  // чтобы вместо значка сломанной картинки блок просто схлопнулся.
-  const logo = document.getElementById('org-logo');
-  logo.addEventListener('error', () => { logo.hidden = true; });
-  if (logo.complete && !logo.naturalWidth) logo.hidden = true;
+// Языки: доступные переключаются, будущие показаны как «скоро», чтобы было
+// видно направление продукта, но не создавалось ложное обещание.
+const LANGUAGES = [
+  { code: 'ru', label: 'Русский', native: 'Русский', ready: true },
+  { code: 'uz', label: 'Узбекский', native: 'Oʻzbekcha', ready: true },
+  { code: 'en', label: 'Английский', native: 'English', ready: true },
+  { code: 'ar', label: 'Арабский', native: 'العربية', ready: false },
+];
 
+function renderLanguages() {
+  const list = document.getElementById('lang-list');
+  list.replaceChildren(...LANGUAGES.map((lang) => {
+    const active = lang.code === state.lang;
+    const row = el('button', {
+      class: 'lang-row' + (lang.ready ? '' : ' soon'),
+      type: 'button',
+      disabled: !lang.ready,
+      'aria-pressed': active ? 'true' : 'false',
+    }, [
+      el('span', { class: 'lang-label', text: lang.label }),
+      el('span', { class: 'lang-native', text: lang.native }),
+      lang.ready
+        ? (active ? el('span', { class: 'lang-check' }, [icon('check', 'icon')]) : null)
+        : el('span', { class: 'lang-soon', text: T().soon }),
+    ]);
+    if (lang.ready) row.addEventListener('click', () => switchLanguage(lang.code));
+    return row;
+  }));
+}
+
+function switchLanguage(code) {
+  if (code === state.lang || state.streaming) return;
+  state.lang = code;
+  if (activeChat() && activeChat().title) newChat();
+  toggleSettings(false);
+  applyStatic();
+  render();
+}
+
+function toggleSettings(open) {
+  const panel = document.getElementById('settings-panel');
+  const next = open === undefined ? panel.hidden : open;
+  panel.hidden = !next;
+  document.getElementById('settings-toggle').setAttribute('aria-expanded', next ? 'true' : 'false');
+}
+
+function init() {
   newChat();
   applyStatic();
   render();
@@ -678,23 +736,12 @@ function init() {
     }
   });
 
-  document.getElementById('lang-tabs').addEventListener('click', (e) => {
-    const btn = e.target.closest('button');
-    if (!btn || btn.dataset.lang === state.lang) return;
-    if (state.streaming) stopStream();
-    state.lang = btn.dataset.lang;
-    // Смена языка начинает новый диалог: темы и подписи меняются, а прежняя
-    // переписка остаётся доступной в истории вкладки.
-    if (activeChat() && activeChat().title) newChat();
-    applyStatic();
-    render();
-  });
-
-  document.getElementById('density-tabs').addEventListener('click', (e) => {
-    const btn = e.target.closest('button');
-    if (!btn || btn.dataset.density === state.density) return;
-    state.density = btn.dataset.density;
-    applyStatic();
+  document.getElementById('settings-toggle').addEventListener('click', () => toggleSettings());
+  document.addEventListener('click', (e) => {
+    const panel = document.getElementById('settings-panel');
+    if (panel.hidden) return;
+    if (panel.contains(e.target) || document.getElementById('settings-toggle').contains(e.target)) return;
+    toggleSettings(false);
   });
 
   document.getElementById('thread').addEventListener('scroll', (e) => {

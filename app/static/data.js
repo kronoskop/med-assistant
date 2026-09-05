@@ -3,7 +3,6 @@
 const I18N = {
   "ru": {
     "orgShort": "ГУ «РСНПМЦЗМиР»",
-    "orgSub": "Центр здоровья матери и ребёнка",
     "newChat": "Новый вопрос",
     "historyLabel": "История консультаций",
     "whoami": "Врач акушер-гинеколог · филиал",
@@ -12,10 +11,8 @@ const I18N = {
     "botName": "Клинический справочный ассистент",
     "botStatus": "Поддержка решения врача · не ставит диагноз",
     "protoNote": "прототип · цвета подобраны приближённо",
-    "dDense": "Плотно",
-    "dAiry": "Свободно",
     "greetTitle": "О каком клиническом вопросе речь?",
-    "greetBody": "Опишите случай без персональных данных: срок гестации, значимый анамнез, объективные данные. Дам ориентиры по критериям, порогам и признакам тревоги. Диагноз, назначение и объём обследования остаются за вами.",
+    "greetBody": "Опишите случай без персональных данных: срок гестации, значимый анамнез, объективные данные. Отвечаю только по документам корпуса и показываю фрагменты, на которых построен ответ. Диагноз, назначение и объём обследования остаются за вами.",
     "chipsLabel": "Ещё вопросы",
     "placeholder": "Например: 32 недели, АД 158/104, протеинурия — что оценить в первую очередь?",
     "disclaimer": "Ответы носят справочный характер и поддерживают решение врача: это не диагноз и не назначение. Пороговые значения сверяйте с действующим национальным клиническим протоколом.",
@@ -62,11 +59,14 @@ const I18N = {
     "notFoundTitle": "В корпусе ничего не найдено по этому вопросу",
     "coveredTitle": "Темы, покрытые корпусом",
     "openDoc": "Открыть документ",
-    "tableInDoc": "Таблица — приведена в документе"
+    "tableInDoc": "Таблица — приведена в документе",
+    "settingsTitle": "Настройки",
+    "languageTitle": "Язык интерфейса",
+    "langNative": "Русский",
+    "soon": "скоро"
   },
   "uz": {
     "orgShort": "DM «RIAITMMOʻM»",
-    "orgSub": "Ona va bola salomatligi markazi",
     "newChat": "Yangi savol",
     "historyLabel": "Konsultatsiyalar tarixi",
     "whoami": "Akusher-ginekolog · filial",
@@ -75,10 +75,8 @@ const I18N = {
     "botName": "Klinik maʼlumot assistenti",
     "botStatus": "Shifokor qaroriga yordam · tashxis qo‘ymaydi",
     "protoNote": "prototip · ranglar taqriban tanlangan",
-    "dDense": "Zich",
-    "dAiry": "Erkin",
     "greetTitle": "Qanday klinik savol bo‘yicha yordam kerak?",
-    "greetBody": "Holatni shaxsiy ma’lumotlarsiz yozing: gestatsiya muddati, muhim anamnez, obyektiv ko‘rsatkichlar. Mezonlar, chegaralar va xavf belgilari bo‘yicha yo‘naltiraman. Tashxis, tayinlash va tekshiruv hajmi sizda qoladi.",
+    "greetBody": "Holatni shaxsiy maʼlumotlarsiz yozing: gestatsiya muddati, muhim anamnez, obyektiv koʻrsatkichlar. Faqat korpus hujjatlari asosida javob beraman va javob qurilgan parchalarni koʻrsataman. Tashxis, tayinlash va tekshiruv hajmi sizda qoladi.",
     "chipsLabel": "Yana savollar",
     "placeholder": "Masalan: 32 hafta, AQB 158/104, proteinuriya — birinchi navbatda nimani baholash kerak?",
     "disclaimer": "Javoblar maʼlumot tarzida bo‘lib, shifokor qaroriga yordam beradi: bu tashxis ham, tayinlash ham emas. Chegaraviy qiymatlarni amaldagi milliy klinik protokol bilan solishtiring.",
@@ -125,11 +123,14 @@ const I18N = {
     "notFoundTitle": "Bu savol boʻyicha korpusda hech narsa topilmadi",
     "coveredTitle": "Korpus qamragan mavzular",
     "openDoc": "Hujjatni ochish",
-    "tableInDoc": "Jadval — hujjatda keltirilgan"
+    "tableInDoc": "Jadval — hujjatda keltirilgan",
+    "settingsTitle": "Sozlamalar",
+    "languageTitle": "Interfeys tili",
+    "langNative": "Oʻzbekcha",
+    "soon": "tez orada"
   },
   "en": {
     "orgShort": "RSSPMC MCH",
-    "orgSub": "Mother and Child Health Centre",
     "newChat": "New question",
     "historyLabel": "Consultation history",
     "whoami": "Obstetrician-gynaecologist · branch",
@@ -138,10 +139,8 @@ const I18N = {
     "botName": "Clinical reference assistant",
     "botStatus": "Decision support · does not diagnose",
     "protoNote": "prototype · colours approximated",
-    "dDense": "Dense",
-    "dAiry": "Airy",
     "greetTitle": "What is the clinical question?",
-    "greetBody": "Describe the case without personal data: gestational age, relevant history, objective findings. I'll point you to criteria, thresholds and warning signs. Diagnosis, prescribing and the extent of workup remain yours.",
+    "greetBody": "Describe the case without personal data: gestational age, relevant history, objective findings. I answer only from the corpus documents and show the fragments the answer rests on. Diagnosis, prescribing and the extent of workup remain yours.",
     "chipsLabel": "More questions",
     "placeholder": "e.g. 32 weeks, BP 158/104, proteinuria — what should I assess first?",
     "disclaimer": "Answers are reference information supporting the clinician's decision: not a diagnosis and not a prescription. Verify every threshold against the current national clinical protocol.",
@@ -188,6 +187,10 @@ const I18N = {
     "notFoundTitle": "Nothing found in the corpus for this question",
     "coveredTitle": "Topics covered by the corpus",
     "openDoc": "Open document",
-    "tableInDoc": "A table — see the document"
+    "tableInDoc": "A table — see the document",
+    "settingsTitle": "Settings",
+    "languageTitle": "Interface language",
+    "langNative": "English",
+    "soon": "soon"
   }
 };
