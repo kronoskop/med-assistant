@@ -1,0 +1,130 @@
+"""Сборка ответа чата: отбор фрагментов, проверка ссылок, отказ при пустоте.
+
+Здесь проходит граница доверия: модель заявляет источники, а подтверждаются
+только те, что действительно были отобраны.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+
+from app.corpus.index import Hit
+from app.corpus.service import Grounding, Retrieval
+from app.prompt import REFUSAL_EMPTY_CORPUS, REFUSAL_NO_MATCH
+from app.schemas import SourceFragment, SupportDocument
+
+
+@dataclass(frozen=True)
+class Grounded:
+    retrieval: Retrieval
+    fragments_prompt: str
+
+
+def refusal_text(status: Grounding) -> str:
+    return REFUSAL_EMPTY_CORPUS if status is Grounding.EMPTY_CORPUS else REFUSAL_NO_MATCH
+
+
+def confirmed_sources(claimed: tuple[str, ...] | list[str], hits: tuple[Hit, ...]) -> list[SourceFragment]:
+    """Оставляет только те ссылки, что указывают на реально отобранные фрагменты.
+
+    Модель охотно ссылается на правдоподобные, но не существовавшие фрагменты;
+    без этой сверки продукт получил бы фальшивую трассируемость.
+    """
+    by_id = {hit.fragment.id: hit for hit in hits}
+    sources: list[SourceFragment] = []
+    seen: set[str] = set()
+    for raw in claimed:
+        hit = by_id.get(str(raw).strip())
+        if hit is None or hit.fragment.id in seen:
+            continue
+        seen.add(hit.fragment.id)
+        sources.append(
+            SourceFragment(
+                id=hit.fragment.id,
+                document_id=hit.document.id,
+                document_title=hit.document.title,
+                origin=hit.document.origin,
+                revision=hit.document.revision,
+                language=hit.fragment.language,
+                location=hit.fragment.location,
+                text=hit.fragment.text,
+                kind=hit.fragment.kind,
+                url=_edition_url(hit),
+            )
+        )
+    return sources
+
+
+def _edition_url(hit: Hit) -> str | None:
+    """Адрес той языковой редакции, из которой взят фрагмент."""
+    edition = hit.document.edition(hit.fragment.language)
+    return edition.url if edition else None
+
+
+def support_documents(retrieval: Retrieval) -> list[SupportDocument]:
+    out: list[SupportDocument] = []
+    for document in retrieval.support:
+        edition = document.editions[0]
+        out.append(
+            SupportDocument(
+                document_id=document.id,
+                title=document.title,
+                origin=document.origin,
+                revision=document.revision,
+                url=edition.url,
+            )
+        )
+    return out
+
+
+def last_question(messages) -> str:
+    for message in reversed(messages):
+        if message.role == "user":
+            return message.content
+    return ""
+
+
+# Ссылка внутри ответа: [document:язык:страница:порядок]
+_MARKER = re.compile(r"\[([^\[\]]+:[^\[\]]+:\d+:\d+)\]")
+
+
+def normalize_answer(text: str) -> str:
+    """Приводит ответ к простому тексту.
+
+    Модель возвращает разметку Markdown, а поле схемы — строка, поэтому
+    переносы приезжают как литеральные «\\n». В ленте это выглядело как
+    сломанный вывод: звёздочки и обратные слэши прямо в тексте.
+    """
+    out = text.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\t", " ")
+    out = re.sub(r"\*\*(.+?)\*\*", r"\1", out)          # жирный
+    out = re.sub(r"(?<!\w)\*(.+?)\*(?!\w)", r"\1", out)   # курсив
+    out = re.sub(r"^\s*[*+]\s+", "— ", out, flags=re.M)   # маркеры списка
+    out = re.sub(r"^\s*#+\s*", "", out, flags=re.M)       # заголовки
+    out = re.sub(r"\n{3,}", "\n\n", out)
+    return out.strip()
+
+
+def weave_citations(text: str, hits: tuple[Hit, ...]) -> tuple[str, list[SourceFragment]]:
+    """Заменяет идентификаторы в тексте на номера сносок.
+
+    В ответе остаются только ссылки на реально отобранные фрагменты: выдуманный
+    идентификатор вычёркивается вместе со скобками, иначе врач увидел бы сноску,
+    ведущую в никуда. Нумерация — по первому появлению в тексте, чтобы номер
+    сноски совпадал с порядком чтения.
+    """
+    by_id = {hit.fragment.id: hit for hit in hits}
+    order: list[str] = []
+
+    def replace(match: re.Match[str]) -> str:
+        fragment_id = match.group(1)
+        if fragment_id not in by_id:
+            return ""  # ссылка в никуда: убираем вместе со скобками
+        if fragment_id not in order:
+            order.append(fragment_id)
+        return f"[{order.index(fragment_id) + 1}]"
+
+    woven = _MARKER.sub(replace, normalize_answer(text))
+    woven = re.sub(r" +([.,;:])", r"\1", woven)
+    woven = re.sub(r"[ \t]{2,}", " ", woven).strip()
+    return woven, confirmed_sources(order, hits)

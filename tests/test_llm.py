@@ -11,7 +11,7 @@ from app.prompt import SYSTEM_PROMPT
 from app.schemas import AppError, ChatMessage
 from app.settings import Settings
 
-ANSWER_OK = '{"answer": "ok"}'
+ANSWER_OK = '{"answer": "ok", "sources": []}'
 
 
 def _settings(**kwargs) -> Settings:
@@ -79,7 +79,7 @@ def test_completion_sends_configured_model():
         return await llm.complete([ChatMessage(role="user", content="вопрос")])
 
     answer = _run(run())
-    assert answer == "ok"
+    assert answer.text == "ok"
     assert captured["body"]["model"] == "custom-med-model"
     assert "127.0.0.1:1234" in captured["url"]
     assert "api.openai.com" not in captured["url"]
@@ -236,7 +236,7 @@ def test_stream_yields_answer_text():
             b'data: {"id":"1","object":"chat.completion.chunk",'
             b'"choices":[{"index":0,"delta":{"content":"ok"}}]}\n\n'
             b'data: {"id":"1","object":"chat.completion.chunk",'
-            b'"choices":[{"index":0,"delta":{"content":"\\"}"}}]}\n\n'
+            b'"choices":[{"index":0,"delta":{"content":"\\", \\"sources\\": []}"}}]}\n\n'
             b"data: [DONE]\n\n"
         )
         return httpx.Response(200, content=body)
@@ -281,7 +281,7 @@ def _capture_request(content: str = ANSWER_OK) -> dict:
         llm = LLMClient(_settings(), transport=_transport(handler))
         return await llm.complete([ChatMessage(role="user", content="вопрос")])
 
-    captured["answer"] = _run(run())
+    captured["answer"] = _run(run()).text
     return captured
 
 
@@ -298,8 +298,9 @@ def test_outgoing_request_carries_answer_schema():
     assert response_format is not None, "схема ответа не отправлена"
     assert response_format["type"] == "json_schema"
     schema = response_format["json_schema"]["schema"]
-    assert schema["properties"] == {"answer": {"type": "string"}}
-    assert schema["required"] == ["answer"]
+    assert schema["properties"]["answer"] == {"type": "string"}
+    assert schema["properties"]["sources"] == {"type": "array", "items": {"type": "string"}}
+    assert schema["required"] == ["answer", "sources"]
 
 
 def test_outgoing_request_never_asks_for_json_object():
@@ -409,7 +410,7 @@ def _body_with_reasoning() -> dict:
     return body
 
 
-def _complete_with_reasoning(**settings_kwargs) -> str:
+def _complete_with_reasoning(**settings_kwargs):
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=_body_with_reasoning())
 
@@ -422,15 +423,13 @@ def _complete_with_reasoning(**settings_kwargs) -> str:
 
 def test_reasoning_is_not_recorded_by_default(caplog):
     caplog.set_level(logging.DEBUG)
-    answer = _complete_with_reasoning()
-    assert answer == "ok"
+    assert _complete_with_reasoning().text == "ok"
     assert REASONING not in caplog.text
 
 
 def test_reasoning_is_recorded_when_explicitly_enabled(caplog):
     caplog.set_level(logging.DEBUG, logger="app.reasoning")
-    answer = _complete_with_reasoning(log_model_reasoning=True)
-    assert answer == "ok"
+    assert _complete_with_reasoning(log_model_reasoning=True).text == "ok"
     assert REASONING in caplog.text
 
 
@@ -442,4 +441,4 @@ def test_reasoning_never_reaches_the_access_log(caplog):
 
 
 def test_reasoning_is_not_part_of_the_answer():
-    assert REASONING not in _complete_with_reasoning(log_model_reasoning=True)
+    assert REASONING not in _complete_with_reasoning(log_model_reasoning=True).text

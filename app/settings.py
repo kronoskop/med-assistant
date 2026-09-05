@@ -15,6 +15,22 @@ class Settings(BaseSettings):
     # Рассуждение модели содержит клинический текст запроса, поэтому отладочная
     # запись выключена по умолчанию и включается явно.
     log_model_reasoning: bool = False
+    # Корпус документов: файлы вне git, модель эмбеддингов — та же локальная
+    # LM Studio, что и генерация.
+    corpus_dir: str = "corpus"
+    embedding_model: str = "text-embedding-multilingual-e5-small"
+    # Модели семейства E5 обучены на префиксах и без них заметно теряют
+    # в качестве: вопрос помечается query, фрагмент — passage.
+    embedding_query_prefix: str = "query: "
+    embedding_passage_prefix: str = "passage: "
+    retrieval_top_k: int = 4
+    # Таблицы в выдаче нужны для ссылок, но не должны вытеснять прозу:
+    # их содержимое модели не показывается.
+    retrieval_max_tables: int = 2
+    # Порог косинусной близости не отделяет своё от чужого: у e5 посторонний
+    # вопрос набирает столько же, сколько профильный. Релевантность решается
+    # тем, сослалась ли модель на фрагмент, а не числом.
+    retrieval_min_score: float = 0.0
 
 
 @lru_cache

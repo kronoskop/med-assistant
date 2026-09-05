@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Клинический справочный ассистент</title>
+<title>CliniCompass — клинический справочный ассистент</title>
 <!-- Шрифты подключаются с CDN, но каждый стек имеет полный локальный запасной
      вариант: на машине без доступа в интернет теряется только гарнитура. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=PT+Serif:wght@400;700&family=Manrope:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="/ui/styles.css">
 </head>
 <body>
@@ -16,10 +16,10 @@
 
   <aside class="side">
     <div class="side-org">
-      <img id="org-logo" src="https://uzaig.uz/images/tild3262-3864-4165-a663-353530316439__logosmall.png" alt="">
+      <span class="side-mark" id="brand-mark"></span>
       <div class="side-org-text">
-        <span class="side-org-name" data-t="orgShort"></span>
-        <span class="side-org-sub" data-t="orgSub"></span>
+        <span class="side-org-name">CliniCompass</span>
+        <span class="side-org-sub" data-t="orgShort"></span>
       </div>
     </div>
 
@@ -40,6 +40,21 @@
         <span class="icon" data-icon="shield-check"></span>
         <span data-t="privacyNote"></span>
       </div>
+      <button class="side-settings" id="settings-toggle" type="button">
+        <span class="icon" data-icon="gear"></span>
+        <span class="side-settings-label" data-t="settingsTitle"></span>
+        <span class="side-settings-value" id="settings-lang"></span>
+      </button>
+    </div>
+
+    <div class="settings-panel" id="settings-panel" hidden>
+      <div class="settings-head">
+        <span class="icon" data-icon="gear"></span>
+        <span data-t="settingsTitle"></span>
+      </div>
+      <span class="settings-label" data-t="languageTitle"></span>
+      <div class="settings-langs" id="lang-list"></div>
+      <span class="settings-note" data-t="modelLangNote"></span>
     </div>
   </aside>
 
@@ -56,16 +71,6 @@
         </div>
       </div>
 
-      <div class="tabs" id="density-tabs">
-        <button data-density="dense" data-t="dDense"></button>
-        <button data-density="airy" data-t="dAiry"></button>
-      </div>
-
-      <div class="tabs" id="lang-tabs">
-        <button data-lang="uz">O‘zbekcha</button>
-        <button data-lang="ru">Русский</button>
-        <button data-lang="en">English</button>
-      </div>
     </header>
 
     <div class="thread sc" id="thread">
@@ -87,6 +92,7 @@
 </div>
 
 <script src="/ui/data.js"></script>
+<script src="/ui/topics.js"></script>
 <script src="/ui/app.js"></script>
 </body>
 </html>

@@ -1,0 +1,113 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+  <style>
+    body { margin: 0; background: #FFFFFF; font-family: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif; color: #47536B; -webkit-font-smoothing: antialiased; }
+    h1, h2, h3 { font-family: "Source Serif 4", Georgia, "Times New Roman", serif; margin: 0; color: #12284B; letter-spacing: -0.004em; }
+    a { color: #C0392B; text-decoration: none; }
+    a:hover { color: #9C2E22; }
+    .num { font-family: "Source Serif 4", Georgia, serif; color: #C0392B; font-weight: 600; }
+  </style>
+</helmet>
+<div style="height:900px;display:flex;background:#fff;overflow:hidden;position:relative">
+  <aside style="width:266px;flex:none;display:flex;flex-direction:column;gap:18px;padding:20px 18px;background:#12284B;color:#C9D5E8">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="width:34px;height:34px;flex:none;border-radius:4px;background:#C0392B;display:grid;place-items:center"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true" style="width:18px;height:18px;flex:none;display:block"><path d="M12 1.6 Q13.1 10.6 17.9 12 Q13.1 13.4 12 22.4 Z" fill="#ffffff"></path><path d="M12 1.6 Q10.9 10.6 6.1 12 Q10.9 13.4 12 22.4 Z" fill="#ffffff" opacity=".58"></path></svg></div>
+      <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
+        <span style="font-family:'Source Serif 4',Georgia,serif;font-size:15px;font-weight:700;color:#fff;letter-spacing:-0.01em">CliniCompass</span>
+        <span style="font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:#8FA3C4">РСНПМЦЗМиР</span>
+      </div>
+    </div>
+
+    <button style="display:flex;align-items:center;justify-content:center;gap:8px;padding:11px 14px;border:1px solid rgba(255,255,255,.26);border-radius:6px;background:transparent;color:#fff;font-family:inherit;font-size:13px;font-weight:500;cursor:pointer"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:15px;height:15px;flex:none;display:block"><path d="M12 5v14M5 12h14"></path></svg>Новый вопрос</button>
+
+    <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:6px">
+      <span style="font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#8FA3C4">История консультаций</span>
+      <div style="font-size:11px;line-height:1.5;color:#9FB0CC;padding:2px 2px 6px">Пока пусто.</div>
+      <span style="font-size:10.5px;line-height:1.5;color:#8FA3C4;padding-top:8px">Только в этой вкладке: сервер диалоги не хранит.</span>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:11px;padding-top:14px;border-top:1px solid rgba(255,255,255,.14)">
+      <div style="display:flex;gap:9px;align-items:flex-start"><svg viewBox="0 0 24 24" fill="none" stroke="#8FA3C4" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:14px;height:14px;flex:none;display:block"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18M12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6M6.2 18.6a7 7 0 0 1 11.6 0"></path></svg><span style="font-size:11px;line-height:1.5;font-weight:500;color:#E1E8F3">Врач акушер-гинеколог · филиал</span></div>
+      <div style="display:flex;gap:9px;align-items:flex-start"><svg viewBox="0 0 24 24" fill="none" stroke="#8FA3C4" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:14px;height:14px;flex:none;display:block"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6zM9 12l2 2 4-4"></path></svg><span style="font-size:11px;line-height:1.5">Не вводите ФИО и идентификаторы пациента</span></div>
+      <button style="display:flex;align-items:center;gap:9px;width:100%;margin-top:3px;padding:8px 9px;border:none;border-radius:5px;background:transparent;color:#C9D5E8;font-family:inherit;cursor:pointer;text-align:left">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#8FA3C4" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:15px;height:15px;flex:none;display:block"><path d="M12 15.4a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8M19.3 13.1a7.4 7.4 0 0 0 0-2.2l1.9-1.5-2-3.4-2.3 1a7.4 7.4 0 0 0-1.9-1.1L14.7 3.4h-3.9l-.3 2.5a7.4 7.4 0 0 0-1.9 1.1l-2.3-1-2 3.4 1.9 1.5a7.4 7.4 0 0 0 0 2.2l-1.9 1.5 2 3.4 2.3-1a7.4 7.4 0 0 0 1.9 1.1l.3 2.5h3.9l.3-2.5a7.4 7.4 0 0 0 1.9-1.1l2.3 1 2-3.4z"></path></svg>
+        <span style="font-size:11.5px;font-weight:500;color:#E1E8F3">Настройки</span>
+        <span style="margin-left:auto;font-size:11px;color:#8FA3C4">Русский</span>
+      </button>
+    </div>
+  </aside>
+  <main style="flex:1;min-width:0;display:flex;flex-direction:column;background:#fff">
+    <header style="flex:none;display:flex;align-items:center;flex-wrap:wrap;gap:12px 16px;padding:14px 26px;border-bottom:1px solid #E3E6EC">
+      <div style="display:flex;flex-direction:column;gap:4px;margin-right:auto">
+        <div style="display:flex;align-items:baseline;gap:9px">
+          <h1 style="font-size:15.5px;font-weight:600">Клинический справочный ассистент</h1>
+          <span style="font-size:10px;padding:2px 7px;border-radius:3px;background:#FBF1EF;color:#C0392B;letter-spacing:.06em;text-transform:uppercase;font-weight:500">прототип</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:7px;font-size:11.5px;color:#7A8598">
+          <span style="width:6px;height:6px;border-radius:50%;flex:none;background:#2E7D62"></span>Поддержка решения врача · не ставит диагноз
+        </div>
+      </div>
+    </header>
+    <div style="flex:1;min-height:0;overflow:hidden;padding:26px 26px;background:#FFFFFF">
+      <div style="max-width:660px;margin:0 auto;display:flex;flex-direction:column;gap:24px">
+        <div style="display:flex;flex-direction:column;gap:26px;padding:14px 0 4px">
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <h2 style="font-size:27px;line-height:1.25;font-weight:600;text-wrap:pretty">О каком клиническом вопросе речь?</h2>
+            <p style="margin:0;font-size:14px;line-height:1.75;color:#47536B;max-width:60ch;text-wrap:pretty">Опишите случай без персональных данных: срок гестации, значимый анамнез, объективные данные. Ответ строится только по документам корпуса, и фрагменты, на которых он построен, показываются рядом. Диагноз, назначение и объём обследования остаются за вами.</p>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:11px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#7A8598;font-weight:600">Темы, покрытые корпусом</span>
+              <span style="flex:1;height:1px;background:#E3E6EC"></span>
+              <span style="font-size:11px;color:#98A1B0">6 документов центра</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:10px">
+            <div style="display:flex;gap:12px;align-items:flex-start;padding:15px 16px;border:1px solid #E3E6EC;border-radius:3px;background:#fff;cursor:pointer">
+              <span class="num" style="font-size:13px;line-height:1.5;flex:none">01</span>
+              <span style="font-size:12.5px;line-height:1.55;color:#12284B">Врастание и предлежание плаценты — что оценить при подозрении?</span>
+            </div>            <div style="display:flex;gap:12px;align-items:flex-start;padding:15px 16px;border:1px solid #E3E6EC;border-radius:3px;background:#fff;cursor:pointer">
+              <span class="num" style="font-size:13px;line-height:1.5;flex:none">02</span>
+              <span style="font-size:12.5px;line-height:1.55;color:#12284B">Монохориальная двойня: как строить наблюдение?</span>
+            </div>            <div style="display:flex;gap:12px;align-items:flex-start;padding:15px 16px;border:1px solid #E3E6EC;border-radius:3px;background:#fff;cursor:pointer">
+              <span class="num" style="font-size:13px;line-height:1.5;flex:none">03</span>
+              <span style="font-size:12.5px;line-height:1.55;color:#12284B">Разрывы промежности: классификация и тактика восстановления</span>
+            </div>            <div style="display:flex;gap:12px;align-items:flex-start;padding:15px 16px;border:1px solid #E3E6EC;border-radius:3px;background:#fff;cursor:pointer">
+              <span class="num" style="font-size:13px;line-height:1.5;flex:none">04</span>
+              <span style="font-size:12.5px;line-height:1.55;color:#12284B">Женское бесплодие: с чего начинать обследование пары?</span>
+            </div>            <div style="display:flex;gap:12px;align-items:flex-start;padding:15px 16px;border:1px solid #E3E6EC;border-radius:3px;background:#fff;cursor:pointer">
+              <span class="num" style="font-size:13px;line-height:1.5;flex:none">05</span>
+              <span style="font-size:12.5px;line-height:1.55;color:#12284B">Болезни бартолиновой железы: когда показано дренирование?</span>
+            </div>            <div style="display:flex;gap:12px;align-items:flex-start;padding:15px 16px;border:1px solid #E3E6EC;border-radius:3px;background:#fff;cursor:pointer">
+              <span class="num" style="font-size:13px;line-height:1.5;flex:none">06</span>
+              <span style="font-size:12.5px;line-height:1.55;color:#12284B">Воспаление шейки матки и влагалища: план обследования</span>
+            </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="flex:none;padding:14px 26px 18px;border-top:1px solid #E3E6EC">
+      <div style="max-width:660px;margin:0 auto;display:flex;flex-direction:column;gap:9px">
+        <div style="display:flex;gap:9px;align-items:flex-end">
+          <div style="flex:1;min-width:0;padding:12px 14px;border:1px solid #D8DCE4;border-radius:6px;background:#FBFBFC;font-size:13.5px;line-height:1.5;color:#98A1B0;min-height:46px;box-sizing:border-box">Например: монохориальная двойня, 24 недели — как строить наблюдение?</div>
+          <button style="width:46px;height:46px;flex:none;border-radius:6px;border:none;background:#12284B;color:#fff;cursor:pointer;display:grid;place-items:center"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:17px;height:17px;flex:none;display:block"><path d="M20 5L4 10.5l6.5 3 3 6.5zM10.5 13.5L20 5"></path></svg></button>
+        </div>
+        <span style="font-size:11.5px;line-height:1.55;color:#7A8598">Справочная поддержка решения врача: не диагноз и не назначение. Пороги сверяйте с действующим протоколом.</span>
+      </div>
+    </div>
+  </main>
+
+</div>
+</x-dc>
+</body>
+</html>

@@ -1,48 +1,35 @@
-/* Клинический справочный ассистент — интерфейс центра.
-   Палитра, типографика и метрики перенесены из артборда Claude Design
-   «Чат-бот центра». Значения плотности вынесены в кастомные свойства:
-   переключатель «Плотно / Свободно» меняет их на корне документа. */
+/* CliniCompass — клинический справочный ассистент.
+   Палитра и типографика из фирменного стиля продукта: тёмно-синий с красным
+   акцентом, серифные заголовки. Метрики — «свободная» плотность, единственная. */
 
 :root {
-  --bg-app: #f4f8f6;
+  --bg-app: #f6f7f9;
   --bg-panel: #ffffff;
-  --brand: #0e5c55;
-  --brand-hover: #12756c;
-  --brand-soft: #eaf3f0;
-  --brand-tint: #f5f9f7;
-  --brand-tab: #f1f6f4;
-  --ink: #17302e;
-  --ink-muted: #42605b;
-  --ink-faint: #5e7370;
-  --line: #e9f0ee;
-  --line-soft: #dfebe7;
-  --line-field: #dce8e4;
-  --side-ink: #dcebe7;
-  --user-bubble: #f6efe7;
-  --accent-warm: #8a5b4a;
-  --flag-bg: #fdf4f1;
-  --flag-line: #f3ded6;
-  --flag-title: #8a3f52;
-  --flag-icon: #b8556a;
-  --flag-ink: #5a4340;
-  --flag-note: #6b4b45;
-  --danger: #b8556a;
-  --ok: #3f9d78;
+  --brand: #12284b;
+  --brand-hover: #1e3a63;
+  --brand-soft: #eef1f6;
+  --brand-tint: #fbfcfd;
+  --brand-tab: #f1f3f6;
+  --accent: #c0392b;
+  --accent-hover: #9c2e22;
+  --accent-soft: #fbf1ef;
+  --accent-line: #eedfdc;
+  --ink: #12284b;
+  --ink-muted: #47536b;
+  --ink-faint: #7a8598;
+  --line: #e3e6ec;
+  --line-soft: #edeff3;
+  --line-field: #d8dce4;
+  --side-ink: #c9d5e8;
+  --side-faint: #8fa3c4;
+  --user-bubble: #f1f3f6;
+  --danger: #c0392b;
+  --ok: #2e7d62;
 
-  /* плотность: по умолчанию «Плотно» */
-  --thread-pad: 22px 26px;
-  --composer-pad: 14px 26px 16px;
-  --col-max: 760px;
-  --msg-gap: 20px;
-  --bubble-pad: 10px 14px;
-  --fs-msg: 13.5px;
-}
-
-:root[data-density="airy"] {
-  --thread-pad: 38px 26px;
-  --composer-pad: 18px 26px 24px;
+  --thread-pad: 26px 26px;
+  --composer-pad: 14px 26px 18px;
   --col-max: 660px;
-  --msg-gap: 32px;
+  --msg-gap: 24px;
   --bubble-pad: 13px 17px;
   --fs-msg: 14.5px;
 }
@@ -56,18 +43,18 @@ html, body {
   margin: 0;
   height: 100%;
   background: var(--bg-app);
-  font-family: Manrope, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   color: var(--ink);
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
 }
 
 a { color: var(--brand); text-decoration: none; border-bottom: 1px solid rgba(14, 92, 85, 0.28); }
-a:hover { color: var(--brand-hover); border-bottom-color: var(--brand-hover); }
+a:hover { color: var(--accent-hover); }
 a.plain { border-bottom: none; }
 
 h1, h2, h3 {
-  font-family: "PT Serif", Georgia, "Times New Roman", serif;
+  font-family: "Source Serif 4", Georgia, "Times New Roman", serif;
   font-weight: 700;
   margin: 0;
   letter-spacing: -0.005em;
@@ -112,7 +99,7 @@ button:focus-visible, a:focus-visible, textarea:focus-visible {
   border-radius: 8px; padding: 4px;
 }
 .side-org-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.side-org-name { font-family: "PT Serif", Georgia, serif; font-size: 13px; font-weight: 700; color: #fff; }
+.side-org-name { font-family: "Source Serif 4", Georgia, "Times New Roman", serif; font-size: 13px; font-weight: 700; color: #fff; }
 .side-org-sub { font-size: 10.5px; opacity: 0.8; line-height: 1.35; }
 
 .side-new {
@@ -236,7 +223,7 @@ button:focus-visible, a:focus-visible, textarea:focus-visible {
 }
 .card-head { display: flex; align-items: center; gap: 8px; }
 .card-head .icon { font-size: 14px; color: var(--brand); }
-.card-title { font-size: 11px; letter-spacing: 0.11em; text-transform: uppercase; color: var(--brand); font-weight: 600; }
+.card-title { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
 .card-list { display: flex; flex-direction: column; gap: 8px; }
 .card-item { display: flex; flex-direction: column; gap: 2px; }
 .card-item a { font-size: 12.5px; line-height: 1.45; font-weight: 500; }
@@ -337,3 +324,128 @@ button:focus-visible, a:focus-visible, textarea:focus-visible {
   .side { display: none; }
   .topics { grid-template-columns: 1fr; }
 }
+
+/* ── источники ответа ─────────────────────────────────────
+   Основа даёт цитаты и сноски, подкрепление — только ссылки. */
+
+.card-hint { font-size: 11px; color: var(--ink-faint); }
+
+.footnote {
+  font-family: "Source Serif 4", Georgia, serif;
+  font-size: 10.5px;
+  font-weight: 600;
+  vertical-align: super;
+  padding: 0 1px 0 2px;
+  border-bottom: none;
+  color: var(--accent);
+}
+.footnote:hover { color: var(--accent-hover); text-decoration: underline; }
+
+.source { display: flex; gap: 10px; align-items: flex-start; scroll-margin-top: 12px; }
+.source:target .source-quote { background: var(--brand-soft); border-radius: 3px; }
+.source-num {
+  flex: none; width: 15px;
+  font-family: "Source Serif 4", Georgia, serif;
+  font-size: 13px; font-weight: 600; line-height: 1.55;
+  color: var(--accent);
+}
+.source-body { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.source-quote { font-size: 12.5px; line-height: 1.6; color: var(--ink-muted); font-style: italic; }
+.source-meta { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.source-meta .icon { font-size: 12px; color: var(--ink-faint); }
+.source-doc { font-size: 11.5px; color: var(--ink); font-weight: 500; }
+.source-lang {
+  font-size: 9.5px; letter-spacing: 0.07em;
+  padding: 1px 5px; border: 1px solid var(--line-field); border-radius: 2px;
+  color: var(--ink-faint);
+}
+.source-place { font-size: 11.5px; color: var(--ink-faint); }
+
+.card.support { background: #fbfcfd; border-color: var(--line-field); }
+.support-item {
+  display: flex; gap: 9px; align-items: flex-start;
+  padding: 7px 8px; border-radius: 6px; border-bottom: none;
+}
+.support-item:hover { background: var(--brand-tab); }
+.support-item .icon { font-size: 12px; color: var(--ink-faint); margin-top: 3px; }
+.support-title { display: block; font-size: 12.5px; line-height: 1.45; color: var(--ink); font-weight: 500; }
+.support-meta { display: block; font-size: 11.5px; color: var(--ink-faint); }
+
+.card.notfound { background: #fafbfb; }
+.card.notfound .card-title { color: var(--ink); text-transform: none; letter-spacing: 0; font-size: 13.5px; font-family: "Source Serif 4", Georgia, "Times New Roman", serif; }
+
+/* Таблицу не цитируем: извлечение из PDF расплющивает её в неразборчивую
+   строку. Показываем ссылку на место в документе. */
+.source-table {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 7px 10px;
+  border: 1px dashed var(--line-field); border-radius: 4px;
+  background: #fbfcfc;
+  font-size: 12px; color: var(--ink-faint);
+}
+.source-table .icon { font-size: 13px; }
+.source-table a { font-weight: 500; }
+
+/* ── фирменный блок и настройки ───────────────────────── */
+
+.side-mark {
+  width: 34px; height: 34px; flex: none;
+  border-radius: 4px; background: var(--accent);
+  display: grid; place-items: center;
+}
+.side-org-name {
+  font-family: "Source Serif 4", Georgia, serif;
+  font-size: 15px; font-weight: 700; color: #fff; letter-spacing: -0.01em;
+}
+.side-org-sub {
+  font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--side-faint);
+}
+
+.side-settings {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  margin-top: 3px; padding: 8px 9px;
+  border: none; border-radius: 5px; background: transparent;
+  color: var(--side-ink); font-family: inherit; cursor: pointer; text-align: left;
+}
+.side-settings:hover, .side-settings[aria-expanded="true"] { background: rgba(255, 255, 255, 0.11); }
+.side-settings .icon { font-size: 15px; color: var(--side-faint); }
+.side-settings-label { font-size: 11.5px; font-weight: 500; color: #e1e8f3; }
+.side-settings-value { margin-left: auto; font-size: 11px; color: var(--side-faint); }
+
+.settings-panel {
+  position: absolute; left: 18px; bottom: 78px; width: 282px; z-index: 5;
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 14px; border: 1px solid var(--line); border-radius: 5px;
+  background: #fff; box-shadow: 0 12px 32px rgba(18, 40, 75, 0.2);
+}
+.settings-head {
+  display: flex; align-items: center; gap: 9px;
+  padding-bottom: 11px; border-bottom: 1px solid var(--line-soft);
+  font-family: "Source Serif 4", Georgia, serif; font-size: 14px; font-weight: 600; color: var(--ink);
+}
+.settings-head .icon { font-size: 15px; color: var(--ink); }
+.settings-label {
+  font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--ink-faint); font-weight: 600; padding: 0 11px;
+}
+.settings-langs { display: flex; flex-direction: column; gap: 2px; }
+.lang-row {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 11px; border: none; border-radius: 4px; background: transparent;
+  font-family: inherit; cursor: pointer; text-align: left;
+}
+.lang-row:hover { background: var(--brand-tab); }
+.lang-row[aria-pressed="true"] { background: var(--brand-tab); }
+.lang-row.soon { opacity: 0.55; cursor: default; }
+.lang-label { font-size: 13px; color: var(--ink); }
+.lang-row[aria-pressed="true"] .lang-label { font-weight: 500; }
+.lang-native { font-size: 11.5px; color: var(--ink-faint); }
+.lang-check { margin-left: auto; display: flex; color: var(--accent); font-size: 15px; }
+.lang-soon {
+  margin-left: auto; font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 2px 6px; border: 1px solid var(--line); border-radius: 2px; color: var(--ink-faint);
+}
+.settings-note { font-size: 11px; line-height: 1.55; color: var(--ink-faint); padding: 0 11px; }
+
+.app { position: relative; }

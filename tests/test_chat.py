@@ -4,7 +4,8 @@ from app.prompt import DISCLAIMER
 from tests.conftest import FakeLLM
 
 
-def test_chat_success(client, fake_llm):
+def test_chat_success(client, fake_llm, found):
+    fake_llm.claim_sources = ["doc:ru:1:0"]
     response = client.post(
         "/api/v1/chat",
         json={"messages": [{"role": "user", "content": "Как оценить обезвоживание?"}]},
@@ -65,7 +66,7 @@ def test_non_text_content(client, fake_llm):
     assert response.status_code == 422
 
 
-def test_follow_up_without_prior_messages_has_no_server_history(client, fake_llm):
+def test_follow_up_without_prior_messages_has_no_server_history(client, fake_llm, found):
     first = client.post(
         "/api/v1/chat",
         json={"messages": [{"role": "user", "content": "первая реплика"}]},
@@ -80,7 +81,7 @@ def test_follow_up_without_prior_messages_has_no_server_history(client, fake_llm
     assert [item.content for item in fake_llm.calls[1]] == ["вторая реплика"]
 
 
-def test_chat_unavailable_returns_503(client):
+def test_chat_unavailable_returns_503(client, found):
     app.dependency_overrides[get_llm] = lambda: FakeLLM(connect_error=True)
     response = client.post(
         "/api/v1/chat",
@@ -92,7 +93,8 @@ def test_chat_unavailable_returns_503(client):
     assert "message" in body
 
 
-def test_streaming_success(client, fake_llm):
+def test_streaming_success(client, fake_llm, found):
+    fake_llm.claim_sources = ["doc:ru:1:0"]
     with client.stream(
         "POST",
         "/api/v1/chat",
@@ -108,7 +110,7 @@ def test_streaming_success(client, fake_llm):
     assert "data: [DONE]" in body
 
 
-def test_streaming_unavailable_is_json_503(client):
+def test_streaming_unavailable_is_json_503(client, found):
     app.dependency_overrides[get_llm] = lambda: FakeLLM(connect_error=True)
     response = client.post(
         "/api/v1/chat",
