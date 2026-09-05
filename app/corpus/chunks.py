@@ -29,6 +29,11 @@ class Fragment:
     ordinal: int
     section: str | None
     text: str
+    kind: str = "prose"  # prose | table
+
+    @property
+    def is_table(self) -> bool:
+        return self.kind == "table"
 
     @property
     def location(self) -> str:
@@ -38,11 +43,25 @@ class Fragment:
         return place
 
 
+# Фрагмент считается таблицей, когда больше половины его строк размечены
+# колонками: цитировать такую расплющенную таблицу бессмысленно, врачу
+# показывается ссылка на место в документе.
+TABLE_SHARE = 0.5
+
+# Матрица обследований: цепочка одиночных маркеров вроде «+ + + +». Ловит
+# таблицы, где строки-переносы размывают долю колонок.
+_MARKER_RUN = re.compile(r"(?:[-+–—]\s+){3,}")
+
+
 def split_document(document_id: str, language: str, pages: list[Page]) -> list[Fragment]:
     fragments: list[Fragment] = []
     section: str | None = None
     for page in pages:
-        for ordinal, (text, section) in enumerate(_split_page(page.text, section)):
+        chunks = _split_lines(page, section) if page.lines else [
+            (text, sec, 0.0, 0) for text, sec in _split_page(page.text, section)
+        ]
+        for ordinal, (text, section, share, columns) in enumerate(chunks):
+            table = (share >= TABLE_SHARE and columns >= 2) or bool(_MARKER_RUN.search(text))
             if len(text) < MIN_CHARS:
                 continue
             fragments.append(
@@ -54,9 +73,40 @@ def split_document(document_id: str, language: str, pages: list[Page]) -> list[F
                     ordinal=ordinal,
                     section=section,
                     text=text,
+                    kind="table" if table else "prose",
                 )
             )
     return fragments
+
+
+def _split_lines(page: Page, section: str | None) -> list[tuple[str, str | None, float, int]]:
+    """Режет страницу по строкам раскладки, считая долю строк с колонками."""
+    out: list[tuple[str, str | None, float, int]] = []
+    buffer: list[str] = []
+    columns = total = size = 0
+
+    def flush() -> None:
+        nonlocal buffer, columns, total, size
+        if buffer:
+            share = columns / total if total else 0.0
+            out.append(("\n".join(buffer), section, share, columns))
+        buffer, columns, total, size = [], 0, 0, 0
+
+    for line in page.lines:
+        text = line.text.strip()
+        if not text:
+            continue
+        heading = _heading(text)
+        if heading:
+            section = heading
+        if size and size + len(text) > TARGET_CHARS:
+            flush()
+        buffer.append(text)
+        size += len(text) + 1
+        total += 1
+        columns += line.columns
+    flush()
+    return out
 
 
 def _split_page(text: str, section: str | None) -> list[tuple[str, str | None]]:

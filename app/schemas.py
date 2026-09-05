@@ -44,6 +44,8 @@ class SourceFragment(BaseModel):
     language: str
     location: str
     text: str
+    kind: str = "prose"  # prose | table
+    url: str | None = None
 
 
 class SupportDocument(BaseModel):

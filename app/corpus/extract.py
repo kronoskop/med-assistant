@@ -19,17 +19,46 @@ _WHITESPACE = re.compile(r"[ \t ]+")
 _BREAKS = re.compile(r"\n{3,}")
 
 
+# Строка таблицы: два и более разрыва в несколько пробелов — следы колонок.
+# Признак берётся из раскладки страницы, потому что в плоском тексте таблица
+# неотличима от прозы: доля букв у неё такая же.
+_COLUMNS = re.compile(r"\S {2,}\S")
+
+
+@dataclass(frozen=True)
+class Line:
+    text: str
+    columns: bool
+
+
 @dataclass(frozen=True)
 class Page:
     number: int  # с единицы, как видит человек
     text: str
+    lines: tuple[Line, ...] = ()
+
+
+def is_column_line(line: str) -> bool:
+    return len(_COLUMNS.findall(line)) >= 2
 
 
 def read_pages(path: Path) -> list[Page]:
     reader = PdfReader(str(path))
     pages: list[Page] = []
     for index, page in enumerate(reader.pages, start=1):
-        pages.append(Page(number=index, text=normalize(page.extract_text() or "")))
+        layout = page.extract_text(extraction_mode="layout") or ""
+        lines = tuple(
+            Line(text=normalize(raw), columns=is_column_line(raw))
+            for raw in layout.split("\n")
+            if raw.strip()
+        )
+        pages.append(
+            Page(
+                number=index,
+                text=normalize(page.extract_text() or ""),
+                lines=lines,
+            )
+        )
     return pages
 
 

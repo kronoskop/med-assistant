@@ -70,12 +70,22 @@ def retrieve(question: str, settings: Settings | None = None, *, corpus: Corpus 
 
 def render_fragments(hits: tuple[Hit, ...]) -> str:
     """Фрагменты в том виде, в каком их видит модель: с идентификатором,
-    по которому потом сверяется ссылка."""
+    по которому потом сверяется ссылка.
+
+    Текст таблицы модели не показывается: извлечение расплющивает её в
+    неразборчивую строку, и модель переписывает этот мусор в ответ. Вместо
+    текста — пометка, что там таблица; врач откроет её по ссылке.
+    """
     blocks = []
     for hit in hits:
         fragment = hit.fragment
+        body = (
+            "Таблица. Её содержимое не приводится — сошлись на неё и отправь врача к документу."
+            if fragment.is_table
+            else fragment.text
+        )
         blocks.append(
-            f"[{fragment.id}] {hit.document.title} — {fragment.location}\n{fragment.text}"
+            f"[{fragment.id}] {hit.document.title} — {fragment.location}\n{body}"
         )
     return "\n\n".join(blocks)
 

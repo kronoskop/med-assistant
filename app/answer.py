@@ -49,9 +49,17 @@ def confirmed_sources(claimed: tuple[str, ...] | list[str], hits: tuple[Hit, ...
                 language=hit.fragment.language,
                 location=hit.fragment.location,
                 text=hit.fragment.text,
+                kind=hit.fragment.kind,
+                url=_edition_url(hit),
             )
         )
     return sources
+
+
+def _edition_url(hit: Hit) -> str | None:
+    """Адрес той языковой редакции, из которой взят фрагмент."""
+    edition = hit.document.edition(hit.fragment.language)
+    return edition.url if edition else None
 
 
 def support_documents(retrieval: Retrieval) -> list[SupportDocument]:

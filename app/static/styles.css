@@ -384,3 +384,15 @@ button:focus-visible, a:focus-visible, textarea:focus-visible {
 
 .card.notfound { background: #fafbfb; }
 .card.notfound .card-title { color: var(--ink); text-transform: none; letter-spacing: 0; font-size: 13.5px; font-family: "PT Serif", Georgia, serif; }
+
+/* Таблицу не цитируем: извлечение из PDF расплющивает её в неразборчивую
+   строку. Показываем ссылку на место в документе. */
+.source-table {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 7px 10px;
+  border: 1px dashed var(--line-field); border-radius: 4px;
+  background: #fbfcfc;
+  font-size: 12px; color: var(--ink-faint);
+}
+.source-table .icon { font-size: 13px; }
+.source-table a { font-weight: 500; }

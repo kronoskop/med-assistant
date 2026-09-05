@@ -365,7 +365,15 @@ function renderSources(sources) {
         el('div', { class: 'source', id: 'src-' + s.id }, [
           el('span', { class: 'source-num', text: String(i + 1) }),
           el('div', { class: 'source-body' }, [
-            el('div', { class: 'source-quote', text: quote(s.text) }),
+            // Таблицу цитировать нечем: извлечение расплющивает её в строку.
+            // Врачу показывается ссылка на место в документе.
+            s.kind === 'table'
+              ? el('div', { class: 'source-table' }, [
+                  icon('file-text'),
+                  el('span', { text: T().tableInDoc }),
+                  s.url ? el('a', { href: s.url, target: '_blank', rel: 'noopener noreferrer', text: T().openDoc }) : null,
+                ])
+              : el('div', { class: 'source-quote', text: quote(s.text) }),
             el('div', { class: 'source-meta' }, [
               icon('file-text'),
               el('span', { class: 'source-doc', text: s.document_title }),

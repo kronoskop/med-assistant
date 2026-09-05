@@ -61,7 +61,8 @@ const I18N = {
     "supportNote": "Международные документы приведены как ориентир. При расхождении приоритет остаётся за действующим протоколом центра.",
     "notFoundTitle": "В корпусе ничего не найдено по этому вопросу",
     "coveredTitle": "Темы, покрытые корпусом",
-    "openDoc": "Открыть документ"
+    "openDoc": "Открыть документ",
+    "tableInDoc": "Таблица — приведена в документе"
   },
   "uz": {
     "orgShort": "DM «RIAITMMOʻM»",
@@ -123,7 +124,8 @@ const I18N = {
     "supportNote": "Xalqaro hujjatlar mo‘ljal sifatida keltirilgan. Farq boʻlsa, ustuvorlik markazning amaldagi protokolida qoladi.",
     "notFoundTitle": "Bu savol boʻyicha korpusda hech narsa topilmadi",
     "coveredTitle": "Korpus qamragan mavzular",
-    "openDoc": "Hujjatni ochish"
+    "openDoc": "Hujjatni ochish",
+    "tableInDoc": "Jadval — hujjatda keltirilgan"
   },
   "en": {
     "orgShort": "RSSPMC MCH",
@@ -185,6 +187,7 @@ const I18N = {
     "supportNote": "International documents are given as a reference. Where they differ, the centre’s current protocol takes precedence.",
     "notFoundTitle": "Nothing found in the corpus for this question",
     "coveredTitle": "Topics covered by the corpus",
-    "openDoc": "Open document"
+    "openDoc": "Open document",
+    "tableInDoc": "A table — see the document"
   }
 };
