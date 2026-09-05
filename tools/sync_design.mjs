@@ -64,6 +64,11 @@ const EXTRA = {
     retry: 'Повторить',
     incomplete: 'неполный ответ',
     modelLangNote: 'Меняется только язык интерфейса. Модель отвечает на языке вопроса.',
+    questionsTitle: 'Что уточнить',
+    questionsNote: 'нажмите, чтобы дополнить вопрос',
+    questionsSource: 'по документу',
+    conflictsTitle: 'Сведения не сходятся',
+    conflictsNote: 'Проверьте, что верно: ответ построен на том, что сообщено.',
   },
   uz: {
     guidesNote: 'Bular javob manbalari emas: model hujjatlarga havolasiz javob beradi. Chegaralarni markazning amaldagi milliy protokoli bilan solishtiring.',
@@ -86,6 +91,11 @@ const EXTRA = {
     retry: 'Qayta urinish',
     incomplete: 'to‘liq bo‘lmagan javob',
     modelLangNote: 'Faqat interfeys tili o‘zgaradi. Model savol tilida javob beradi.',
+    questionsTitle: 'Nimani aniqlashtirish kerak',
+    questionsNote: 'savolni to‘ldirish uchun bosing',
+    questionsSource: 'hujjat bo‘yicha',
+    conflictsTitle: 'Ma’lumotlar bir-biriga mos emas',
+    conflictsNote: 'Qaysi biri to‘g‘ri ekanini tekshiring: javob berilgan ma’lumotlarga qurilgan.',
   },
   en: {
     guidesNote: 'These are not the sources of the answer: the model replies without citing documents. Verify every threshold against the centre’s current national protocol.',
@@ -108,6 +118,11 @@ const EXTRA = {
     retry: 'Retry',
     incomplete: 'incomplete answer',
     modelLangNote: 'Only the interface language changes. The model answers in the language of the question.',
+    questionsTitle: 'What to clarify',
+    questionsNote: 'tap to add it to your question',
+    questionsSource: 'per document',
+    conflictsTitle: 'These do not match',
+    conflictsNote: 'Check which is correct: the answer is built on what was reported.',
   },
 };
 

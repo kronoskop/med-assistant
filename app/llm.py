@@ -6,7 +6,7 @@ import logging
 import threading
 import time
 from collections.abc import AsyncIterator, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
@@ -21,11 +21,17 @@ from axllm import (
     ax,
 )
 
-from app.prompt import GROUNDING_INSTRUCTION, SYSTEM_PROMPT
+from app.prompt import GROUNDING_INSTRUCTION, QUESTIONS_INSTRUCTION, SYSTEM_PROMPT
 from app.schemas import AppError, ChatMessage
 from app.settings import Settings, get_settings
 
-CHAT_SIGNATURE = "conversation:string, fragments:string -> answer:string, sources:string[]"
+CHAT_SIGNATURE = (
+    "conversation:string, fragments:string -> "
+    "answer:string, sources:string[], questions?:json[], conflicts?:json[]"
+)
+# `?` — уточнения необязательны для Ax: ответ не должен пропасть целиком из-за
+# того, что модель не выдала второстепенное поле. Схеме на проводе они всё
+# равно предписаны, поэтому обычно приходят.
 AxTransport = Callable[[dict[str, Any]], Any]
 
 reasoning_logger = logging.getLogger("app.reasoning")
@@ -33,19 +39,60 @@ reasoning_logger = logging.getLogger("app.reasoning")
 
 @dataclass(frozen=True)
 class Answer:
-    """Ответ программы: текст и заявленные моделью источники.
+    """Ответ программы: текст и всё, что модель к нему заявила.
 
-    Заявленные — не значит подтверждённые: идентификаторы сверяются с реально
-    отобранными фрагментами выше по стеку.
+    Заявленные — не значит подтверждённые: и источники, и уточнения сверяются
+    с реально отобранными фрагментами выше по стеку. Уточнения и противоречия
+    остаются здесь сырыми: разбирать их — дело границы доверия, а не транспорта.
     """
 
     text: str
     source_ids: tuple[str, ...] = ()
+    questions: tuple[Any, ...] = ()
+    conflicts: tuple[Any, ...] = ()
+
+
+@dataclass
+class Claims:
+    """Заявленное моделью в потоке: наполняется по его завершении.
+
+    В потоке текст идёт первым, а поля со ссылками — последними: собрать их
+    можно только когда JSON дочитан до конца.
+    """
+
+    source_ids: list[str] = field(default_factory=list)
+    questions: list[Any] = field(default_factory=list)
+    conflicts: list[Any] = field(default_factory=list)
+
 
 _JSON_TYPES = {
     "string": "string",
     "number": "number",
     "boolean": "boolean",
+}
+
+# Составные поля описываются явно: `json` в сигнатуре говорит Ax, что значение
+# произвольной формы, но сервер модели ограничивает генерацию грамматикой и
+# требует конкретных свойств.
+_OBJECT_ITEMS = {
+    "questions": {
+        "type": "object",
+        "properties": {
+            "question": {"type": "string"},
+            "source": {"type": "string"},
+        },
+        "required": ["question", "source"],
+        "additionalProperties": False,
+    },
+    "conflicts": {
+        "type": "object",
+        "properties": {
+            "first": {"type": "string"},
+            "second": {"type": "string"},
+        },
+        "required": ["first", "second"],
+        "additionalProperties": False,
+    },
 }
 
 
@@ -58,14 +105,16 @@ def response_schema(signature: str = CHAT_SIGNATURE) -> dict[str, Any]:
     """
     outputs = signature.split("->", 1)[1]
     properties: dict[str, Any] = {}
-    for field in outputs.split(","):
-        name, _, kind = field.strip().partition(":")
+    for declaration in outputs.split(","):
+        name, _, kind = declaration.strip().partition(":")
+        name = name.rstrip("?")  # необязательность — договор с Ax, не со схемой
         if not name:
             continue
         kind = kind.strip()
         if kind.endswith("[]"):
-            item = _JSON_TYPES.get(kind[:-2], "string")
-            properties[name] = {"type": "array", "items": {"type": item}}
+            inner = kind[:-2]
+            item = _OBJECT_ITEMS.get(name) if inner == "json" else {"type": _JSON_TYPES.get(inner, "string")}
+            properties[name] = {"type": "array", "items": item or {"type": "string"}}
         else:
             properties[name] = {"type": _JSON_TYPES.get(kind, "string")}
     return {
@@ -202,7 +251,9 @@ def _make_program():
     return ax(
         CHAT_SIGNATURE,
         {
-            "instruction": SYSTEM_PROMPT + "\n" + GROUNDING_INSTRUCTION,
+            "instruction": "\n".join(
+                (SYSTEM_PROMPT, GROUNDING_INSTRUCTION, QUESTIONS_INSTRUCTION)
+            ),
             "infra_retries": 0,
             "validation_retries": 0,
         },
@@ -256,16 +307,21 @@ class LLMClient:
         answer = _answer_from_result(result)
         if answer is None or not answer.strip():
             raise AppError(502, "llm_error", "Модель вернула пустой ответ")
-        return Answer(answer, _sources_from_result(result))
+        return Answer(
+            answer,
+            _sources_from_result(result),
+            _objects_from_result(result, "questions"),
+            _objects_from_result(result, "conflicts"),
+        )
 
     async def start_chat_stream(
         self,
         messages: list[ChatMessage],
         fragments: str = "",
-        source_ids: list[str] | None = None,
+        claims: Claims | None = None,
     ) -> AsyncIterator[str]:
-        """`source_ids`, если передан, наполняется идентификаторами источников
-        по завершении потока: в потоке они приходят последними."""
+        """`claims`, если передан, наполняется заявленным моделью по завершении
+        потока: в JSON эти поля идут после текста ответа."""
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[tuple[str, object]] = asyncio.Queue()
         program = _make_program()
@@ -295,8 +351,10 @@ class LLMClient:
                     raise _map_ax_error(payload) from payload
                 if kind == "done":
                     answer = _parse_answer(buffer)
-                    if source_ids is not None:
-                        source_ids.extend(_sources_from_result(buffer))
+                    if claims is not None:
+                        claims.source_ids.extend(_sources_from_result(buffer))
+                        claims.questions.extend(_objects_from_result(buffer, "questions"))
+                        claims.conflicts.extend(_objects_from_result(buffer, "conflicts"))
                     if answer is None or not answer.strip():
                         raise AppError(502, "llm_error", "Модель вернула пустой ответ")
                     leftover = answer[emitted:]
@@ -385,14 +443,18 @@ def _answer_from_result(result: object) -> str | None:
     return None
 
 
-def _sources_from_result(result: object) -> tuple[str, ...]:
-    payload = result
-    if isinstance(payload, str):
+def _as_dict(result: object) -> dict[str, Any] | None:
+    if isinstance(result, str):
         try:
-            payload = json.loads(payload)
+            result = json.loads(result)
         except json.JSONDecodeError:
-            return ()
-    if not isinstance(payload, dict):
+            return None
+    return result if isinstance(result, dict) else None
+
+
+def _sources_from_result(result: object) -> tuple[str, ...]:
+    payload = _as_dict(result)
+    if payload is None:
         return ()
     values = payload.get("sources")
     if isinstance(values, str):
@@ -400,6 +462,19 @@ def _sources_from_result(result: object) -> tuple[str, ...]:
     if not isinstance(values, list):
         return ()
     return tuple(str(v) for v in values if isinstance(v, (str, int)))
+
+
+def _objects_from_result(result: object, key: str) -> tuple[Any, ...]:
+    """Составные поля отдаются как есть: их достоверность проверяется выше."""
+    payload = _as_dict(result)
+    if payload is None:
+        return ()
+    values = payload.get(key)
+    if isinstance(values, dict):
+        values = [values]
+    if not isinstance(values, list):
+        return ()
+    return tuple(values)
 
 
 def _content_from_event(event: object) -> str:

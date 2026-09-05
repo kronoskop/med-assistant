@@ -33,6 +33,7 @@ const ICONS = {
   'baby': 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18M9.5 10.5h.01M14.5 10.5h.01M9.3 14.5a3.6 3.6 0 0 0 5.4 0',
   'test-tube': 'M9 3h6M10 3v13a2 2 0 0 0 4 0V3M10 11h4',
   'first-aid-kit': 'M3.5 7.5h17v12.5h-17zM9 7.5V5h6v2.5M12 11.5v5M9.5 14h5',
+  'question': 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18M9.6 9.4a2.5 2.5 0 1 1 3.2 2.9c-.5.2-.8.7-.8 1.2v.5M12 16.8h.01',
   'sun': 'M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4',
 };
 
@@ -164,7 +165,7 @@ async function ask(question) {
 
   state.stick = true;
   thread().push({ role: 'user', content: text });
-  const reply = { role: 'assistant', content: '', streaming: true, sources: [], support: [] };
+  const reply = { role: 'assistant', content: '', streaming: true, sources: [], support: [], questions: [], conflicts: [] };
   thread().push(reply);
 
   const input = document.getElementById('input');
@@ -220,6 +221,8 @@ async function ask(question) {
               // Последний кадр перед [DONE]: подтверждённые фрагменты и подкрепление.
               reply.sources = parsed.sources;
               reply.support = parsed.support || [];
+              reply.questions = parsed.questions || [];
+              reply.conflicts = parsed.conflicts || [];
               reply.grounded = parsed.grounded;
               reply.grounding = parsed.grounding;
             }
@@ -433,6 +436,60 @@ function renderSupport(support) {
   ]);
 }
 
+// Уточнение врач дополняет данными пациента, которых у ассистента нет,
+// поэтому нажатие подставляет вопрос в поле ввода, а не отправляет его.
+function useQuestion(text) {
+  const input = document.getElementById('input');
+  if (!input) return;
+  input.value = text;
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+}
+
+function renderQuestions(questions) {
+  return el('div', { class: 'card clarify' }, [
+    el('div', { class: 'card-head' }, [
+      icon('question'),
+      el('span', { class: 'card-title', text: T().questionsTitle }),
+      el('span', { class: 'card-hint', text: T().questionsNote }),
+    ]),
+    el('div', { class: 'card-list' },
+      questions.map((q) =>
+        el('button', { class: 'clarify-item', type: 'button', onClick: () => useQuestion(q.question) }, [
+          el('span', { class: 'clarify-q', text: q.question }),
+          // Фрагмент вопроса может быть не процитирован в ответе — сноски,
+          // ведущей к нему, тогда нет, и документ называется прямо здесь.
+          el('span', { class: 'clarify-src' }, [
+            icon('file-text'),
+            el('span', { text: T().questionsSource + ' ' + q.source.document_title + ' · ' + q.source.location }),
+          ]),
+        ])
+      )
+    ),
+  ]);
+}
+
+// Заметнее уточнений: это не предложение дополнить, а сообщение о том, что
+// сказанное врачом не сходится само с собой.
+function renderConflicts(conflicts) {
+  return el('div', { class: 'card conflict' }, [
+    el('div', { class: 'card-head' }, [
+      icon('warning-diamond'),
+      el('span', { class: 'card-title', text: T().conflictsTitle }),
+    ]),
+    el('div', { class: 'card-list' },
+      conflicts.map((c) =>
+        el('div', { class: 'conflict-row' }, [
+          el('span', { class: 'conflict-side', text: quote(c.first) }),
+          el('span', { class: 'conflict-vs', text: '↔' }),
+          el('span', { class: 'conflict-side', text: quote(c.second) }),
+        ])
+      )
+    ),
+    el('span', { class: 'card-note', text: T().conflictsNote }),
+  ]);
+}
+
 // В корпусе ничего не нашлось: показываем, что покрыто, чтобы отказ не был тупиком.
 function renderNotFound() {
   return el('div', { class: 'card notfound' }, [
@@ -571,8 +628,10 @@ function renderAssistant(item) {
   // У оборванного ответа не показываем ничего, что придаёт ему вид законченного.
   if (item.done && !item.broken) {
     if (item.grounded === false) body.push(renderNotFound());
+    if (item.conflicts && item.conflicts.length) body.push(renderConflicts(item.conflicts));
     if (item.sources && item.sources.length) body.push(renderSources(item.sources));
     if (item.support && item.support.length) body.push(renderSupport(item.support));
+    if (item.questions && item.questions.length) body.push(renderQuestions(item.questions));
     if (item.escalate || item.local) body.push(renderEscalate());
     if (!item.local) body.push(renderActions());
   }
