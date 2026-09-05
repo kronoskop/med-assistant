@@ -101,34 +101,7 @@ function newChat() {
 // Ровно та же логика, что в макете: точное совпадение вопроса либо вхождение
 // ключевого слова. Ничего не найдено — тема не распознана, и курируемые блоки
 // не показываются вообще.
-function matchTopic(text) {
-  const low = text.toLowerCase().trim();
-  const bank = TOPICS[state.lang];
-  return (
-    bank.find((t) => t.q.toLowerCase() === low) ||
-    bank.find((t) => t.keywords.some((k) => low.includes(k))) ||
-    null
-  );
-}
 
-function guideLabel(g) {
-  const src = g.src === 'who' ? T().srcWho : g.src === 'aap' ? T().srcAap : T().srcLocal;
-  return g.y ? src + ' ' + g.y : src;
-}
-function guideTitle(g) {
-  return g.src === 'local' ? T().localGuideTitle : g.t;
-}
-function guideHref(g) {
-  return g.src === 'local' ? T().protocolsHref : g.href;
-}
-
-const LOCAL_GUIDE = { t: '', src: 'local', y: '', href: '' };
-
-// Руководства как ориентир для сверки. Для распознанной темы — её подборка,
-// иначе только протоколы центра. К фрагментам ответа они не привязываются.
-function guidesFor(topic) {
-  return topic ? GUIDES[topic.id] : [LOCAL_GUIDE];
-}
 
 // ── запрос к API ──────────────────────────────────────────
 // В модель уходят только реплики диалога: локальные карточки интерфейса и
@@ -166,10 +139,9 @@ async function ask(question) {
     });
   }
 
-  const topic = matchTopic(text);
   state.stick = true;
   thread().push({ role: 'user', content: text });
-  const reply = { role: 'assistant', content: '', streaming: true, topicId: topic ? topic.id : null };
+  const reply = { role: 'assistant', content: '', streaming: true, sources: [], support: [] };
   thread().push(reply);
 
   const input = document.getElementById('input');
@@ -221,6 +193,12 @@ async function ask(question) {
             if (parsed.text) {
               reply.content += parsed.text;
               paintStream(reply.content);
+            } else if (parsed.sources !== undefined) {
+              // Последний кадр перед [DONE]: подтверждённые фрагменты и подкрепление.
+              reply.sources = parsed.sources;
+              reply.support = parsed.support || [];
+              reply.grounded = parsed.grounded;
+              reply.grounding = parsed.grounding;
             }
           } catch (_) { /* неполный кадр — придёт в следующем чтении */ }
         }
@@ -363,36 +341,66 @@ function renderGreeting() {
   ]);
 }
 
-function renderGuides(guides) {
+function renderSources(sources) {
   return el('div', { class: 'card' }, [
-    el('div', { class: 'card-head' }, [icon('book-bookmark'), el('span', { class: 'card-title', text: T().guidesTitle })]),
+    el('div', { class: 'card-head' }, [
+      icon('book-bookmark'),
+      el('span', { class: 'card-title', text: T().sourcesTitle }),
+      el('span', { class: 'card-hint', text: T().sourcesNote }),
+    ]),
     el('div', { class: 'card-list' },
-      guides.map((g) =>
-        el('div', { class: 'card-item' }, [
-          el('a', { href: guideHref(g), target: '_blank', rel: 'noopener noreferrer', text: guideTitle(g) }),
-          el('span', { text: guideLabel(g) }),
+      sources.map((s, i) =>
+        el('div', { class: 'source', id: 'src-' + s.id }, [
+          el('span', { class: 'source-num', text: String(i + 1) }),
+          el('div', { class: 'source-body' }, [
+            el('div', { class: 'source-quote', text: '«' + s.text + '»' }),
+            el('div', { class: 'source-meta' }, [
+              icon('file-text'),
+              el('span', { class: 'source-doc', text: s.document_title }),
+              el('span', { class: 'source-lang', text: s.language.toUpperCase() }),
+              el('span', { class: 'source-place', text: s.location }),
+            ]),
+          ]),
         ])
       )
     ),
-    el('span', { class: 'card-note', text: T().guidesNote }),
   ]);
 }
 
-function renderFlags(topic) {
-  return el('div', { class: 'card flags' }, [
-    el('span', { class: 'card-title', text: T().flagsTitle }),
+// Подкрепление — ссылками и без цитат: сноска означает источник утверждения,
+// а международный документ им не является.
+function renderSupport(support) {
+  return el('div', { class: 'card support' }, [
+    el('div', { class: 'card-head' }, [
+      icon('book-bookmark'),
+      el('span', { class: 'card-title', text: T().supportTitle }),
+    ]),
     el('div', { class: 'card-list' },
-      topic.flags.map((f) =>
-        el('div', { class: 'flag-row' }, [icon('warning-diamond'), el('span', { text: f })])
+      support.map((d) =>
+        el('a', { class: 'support-item', href: d.url, target: '_blank', rel: 'noopener noreferrer' }, [
+          icon('arrow-up-right'),
+          el('span', {}, [
+            el('span', { class: 'support-title', text: d.title }),
+            el('span', { class: 'support-meta', text: d.origin + ', ' + d.revision }),
+          ]),
+        ])
       )
     ),
-    el('span', { class: 'card-note', text: T().flagsNote }),
-    // Редакция протокола не зашивается в интерфейс: действующей считается
-    // последняя опубликованная на сайте центра, туда и ведёт ссылка.
-    el('span', { class: 'card-note' }, [
-      T().flagsSource + ' ',
-      el('a', { href: T().protocolsHref, target: '_blank', rel: 'noopener noreferrer', text: T().protocolsLink }),
+    el('span', { class: 'card-note', text: T().supportNote }),
+  ]);
+}
+
+// В корпусе ничего не нашлось: показываем, что покрыто, чтобы отказ не был тупиком.
+function renderNotFound() {
+  return el('div', { class: 'card notfound' }, [
+    el('div', { class: 'card-head' }, [icon('search'), el('span', { class: 'card-title', text: T().notFoundTitle })]),
+    el('div', { class: 'links' }, [
+      el('a', { href: T().protocolsHref, target: '_blank', rel: 'noopener noreferrer' }, [icon('arrow-up-right'), T().protocolsLink]),
     ]),
+    el('span', { class: 'card-note', text: T().coveredTitle }),
+    el('div', { class: 'chips-row' },
+      TOPICS[state.lang].map((t) => el('button', { type: 'button', text: t.q, onClick: () => ask(t.q) }))
+    ),
   ]);
 }
 
@@ -439,8 +447,37 @@ function renderError(item) {
   ]);
 }
 
+// Сноска ведёт к своему фрагменту ниже. Модель ставит в тексте идентификатор
+// фрагмента; какие из них подтверждены, решил сервер — здесь остаётся только
+// пронумеровать подтверждённые и убрать всё остальное.
+const CITATION = /\[([^\[\]]+:[^\[\]]+:\d+:\d+)\]|\[(\d+)\]/g;
+
+function renderAnswerText(item) {
+  const node = el('div', { class: 'bot-text' });
+  const sources = item.sources || [];
+  const byId = new Map(sources.map((s, i) => [s.id, i]));
+  const text = String(item.content || '');
+  let cursor = 0;
+  let match;
+  CITATION.lastIndex = 0;
+  while ((match = CITATION.exec(text)) !== null) {
+    node.appendChild(document.createTextNode(text.slice(cursor, match.index)));
+    cursor = match.index + match[0].length;
+    const index = match[1] !== undefined ? byId.get(match[1]) : Number(match[2]) - 1;
+    const source = index === undefined || index < 0 ? null : sources[index];
+    if (!source) continue;  // ссылка в никуда: не показываем вовсе
+    node.appendChild(el('a', {
+      class: 'footnote',
+      href: '#src-' + source.id,
+      title: source.document_title + ' — ' + source.location,
+      text: String(index + 1),
+    }));
+  }
+  node.appendChild(document.createTextNode(text.slice(cursor)));
+  return node;
+}
+
 function renderAssistant(item) {
-  const topic = item.topicId !== null && item.topicId !== undefined ? TOPICS[state.lang][item.topicId] : null;
   const body = [];
 
   if (item.local) body.push(el('span', { class: 'local-note', text: T().localCardNote }));
@@ -450,7 +487,7 @@ function renderAssistant(item) {
     text.appendChild(el('span', { class: 'caret' }));
     body.push(text);
   } else {
-    body.push(el('div', { class: 'bot-text', text: item.content }));
+    body.push(renderAnswerText(item));
   }
 
   if (item.broken) {
@@ -467,23 +504,19 @@ function renderAssistant(item) {
     body.push(el('span', { class: 'incomplete', text: T().stoppedNote }));
   }
 
-  // у оборванного ответа не показываем ничего, что придаёт ему вид законченного
-  const links = item.links || (topic && item.done && !item.broken && !item.local ? topic.links : []);
-  if (links && links.length) {
+  const links = item.links || [];
+  if (links.length) {
     body.push(el('div', { class: 'links' },
       links.map((l) => el('a', { href: l.href, target: '_blank', rel: 'noopener noreferrer' }, [icon('arrow-up-right'), l.label]))
     ));
   }
 
+  // У оборванного ответа не показываем ничего, что придаёт ему вид законченного.
   if (item.done && !item.broken) {
-    const guides = item.guides || (item.local ? null : guidesFor(topic));
-    if (guides) body.push(renderGuides(guides));
-    // Признаки тревоги — только для распознанной темы и только из курируемого
-    // списка. На свободном вопросе блок отсутствует.
-    if (topic && !item.local && topic.flags.length) body.push(renderFlags(topic));
-    if (item.escalate || (topic && topic.escalate && !item.local) || (!topic && !item.local)) {
-      body.push(renderEscalate());
-    }
+    if (item.grounded === false) body.push(renderNotFound());
+    if (item.sources && item.sources.length) body.push(renderSources(item.sources));
+    if (item.support && item.support.length) body.push(renderSupport(item.support));
+    if (item.escalate || item.local) body.push(renderEscalate());
     if (!item.local) body.push(renderActions());
   }
 

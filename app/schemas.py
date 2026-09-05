@@ -33,6 +33,34 @@ class ChatRequest(BaseModel):
     stream: bool = False
 
 
+class SourceFragment(BaseModel):
+    """Фрагмент документа основы, подтверждающий утверждение ответа."""
+
+    id: str
+    document_id: str
+    document_title: str
+    origin: str
+    revision: str
+    language: str
+    location: str
+    text: str
+
+
+class SupportDocument(BaseModel):
+    """Документ подкрепления: ориентир со ссылкой, без цитат и без сносок."""
+
+    document_id: str
+    title: str
+    origin: str
+    revision: str
+    url: str
+
+
 class ChatResponse(BaseModel):
     message: ChatMessage
     disclaimer: str
+    # Ниже — аддитивные поля: существующие клиенты их просто не читают.
+    grounded: bool = True
+    grounding: str = "grounded"
+    sources: list[SourceFragment] = Field(default_factory=list)
+    support: list[SupportDocument] = Field(default_factory=list)

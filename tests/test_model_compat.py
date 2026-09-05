@@ -1,3 +1,4 @@
+import json
 import logging
 
 import pytest
@@ -48,4 +49,5 @@ def test_chat_response_carries_no_model_reasoning(client, fake_llm):
     )
     assert response.status_code == 200
     assert "reasoning" not in response.text.lower()
-    assert set(response.json()) == {"message", "disclaimer"}
+    assert {"message", "disclaimer"} <= set(response.json())
+    assert "reasoning" not in json.dumps(response.json(), ensure_ascii=False).lower()

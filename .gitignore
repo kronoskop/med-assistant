@@ -13,3 +13,8 @@ build/
 # Собранный канвас Claude Design: ~2.5 МБ упакованного редактора,
 # пересобирается из .dc.html и canvas.json
 design/**/clinicompass-interface.html
+
+# Документы корпуса: чужие файлы с собственным правообладателем,
+# воспроизводятся по app/corpus/documents.json.
+# Ведущий слэш обязателен: без него правило скрыло бы и app/corpus/ с кодом.
+/corpus/

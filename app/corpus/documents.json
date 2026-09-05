@@ -1,0 +1,156 @@
+{
+  "documents": [
+    {
+      "id": "placenta-accreta",
+      "title": "Аномалии расположения и прикрепления плаценты (предлежание и врастание)",
+      "origin": "РСНПМЦЗМиР — стандарты диагностики и лечения",
+      "level": "base",
+      "revision": "2025-10-09",
+      "editions": [
+        {
+          "language": "ru",
+          "url": "https://uzaig.uz/media/attachments/2025/10/09/Standart-Vrastanie-placenty-rus.pdf",
+          "filename": "Standart-Vrastanie-placenty-rus.pdf",
+          "sha256": "55bddd2f4cdb95355dd969a7c78d63bcca3fff510fb6d2bb060cd5a45bd2fc76"
+        },
+        {
+          "language": "uz",
+          "url": "https://uzaig.uz/media/attachments/2025/10/09/Standart-Vrastanie-placenty-lot.pdf",
+          "filename": "Standart-Vrastanie-placenty-lot.pdf",
+          "sha256": "b606e36a6f1ca06dd392ec3b4a01e9f9e6dc007e5dd3eb0c00edf554f7ba7459"
+        }
+      ]
+    },
+    {
+      "id": "multiple-pregnancy",
+      "title": "Многоплодная беременность",
+      "origin": "РСНПМЦЗМиР — стандарты диагностики и лечения",
+      "level": "base",
+      "revision": "2025-10-09",
+      "editions": [
+        {
+          "language": "ru",
+          "url": "https://uzaig.uz/media/attachments/2025/10/09/Standart_Mnogoplodnaa_beremennost_rus.pdf",
+          "filename": "Standart_Mnogoplodnaa_beremennost_rus.pdf",
+          "sha256": "47716492c2cdaff7dc0e20aaa1aed821394455bc2e16681f95d617c096ab7764"
+        },
+        {
+          "language": "uz",
+          "url": "https://uzaig.uz/media/attachments/2025/10/09/Standart_Mnogoplodnaa_beremennost_lot.pdf",
+          "filename": "Standart_Mnogoplodnaa_beremennost_lot.pdf",
+          "sha256": "0e7e3803b4aa670ae47ca4a5fd84bc5d8eec95d6995fa03ba2f2dd39da416b36"
+        }
+      ]
+    },
+    {
+      "id": "perineal-tears",
+      "title": "Разрывы промежности при родоразрешении и другие акушерские травмы",
+      "origin": "РСНПМЦЗМиР — стандарты диагностики и лечения",
+      "level": "base",
+      "revision": "2025-10-09",
+      "editions": [
+        {
+          "language": "ru",
+          "url": "https://uzaig.uz/media/attachments/2025/10/09/Standart_Razryvy_promeznosti_rus.pdf",
+          "filename": "Standart_Razryvy_promeznosti_rus.pdf",
+          "sha256": "b493217801b079d257b44aaf9bbe9fa1a58e8693834850b4a5ff0081a47eab6d"
+        },
+        {
+          "language": "uz",
+          "url": "https://uzaig.uz/media/attachments/2025/10/09/Standart_Razryvy_promeznosti_lot.pdf",
+          "filename": "Standart_Razryvy_promeznosti_lot.pdf",
+          "sha256": "8f569cd192367159eb663f7678ef018bdf3e50264508e8fdf6f8fc88820da07d"
+        }
+      ]
+    },
+    {
+      "id": "female-infertility",
+      "title": "Женское бесплодие",
+      "origin": "РСНПМЦЗМиР — стандарты диагностики и лечения",
+      "level": "base",
+      "revision": "2025-10-09",
+      "editions": [
+        {
+          "language": "ru",
+          "url": "https://uzaig.uz/media/attachments/2025/10/09/Standart-Zenskoe-besplodie-rus.pdf",
+          "filename": "Standart-Zenskoe-besplodie-rus.pdf",
+          "sha256": "e509f1380536cfd61de74643210fe7c1c5c195375574d83fb0bcdc66cc2f2392"
+        },
+        {
+          "language": "uz",
+          "url": "https://uzaig.uz/media/attachments/2025/10/09/Standart-Zenskoe-besplodie-lot.pdf",
+          "filename": "Standart-Zenskoe-besplodie-lot.pdf",
+          "sha256": "a8375d56060afd57836f4eb039b5d7e2be72bc6a363522c8f3d4769a44cebef6"
+        }
+      ]
+    },
+    {
+      "id": "bartholin-gland",
+      "title": "Болезни бартолиновой железы",
+      "origin": "РСНПМЦЗМиР — стандарты диагностики и лечения",
+      "level": "base",
+      "revision": "2025-10-09",
+      "editions": [
+        {
+          "language": "ru",
+          "url": "https://uzaig.uz/media/attachments/2025/10/09/Standart_Bolezni_bartolinovoj_zelezy_rus.pdf",
+          "filename": "Standart_Bolezni_bartolinovoj_zelezy_rus.pdf",
+          "sha256": "ec0d270f2badb4fc1022f1201c82c0c35fb76a9aa2719f7574830f3c675c0443"
+        },
+        {
+          "language": "uz",
+          "url": "https://uzaig.uz/media/attachments/2025/10/09/Standart_Bolezni_bartolinovoj_zelezy_lot.pdf",
+          "filename": "Standart_Bolezni_bartolinovoj_zelezy_lot.pdf",
+          "sha256": "e86310bcab74aa1a5da8430ff556517b153017e751e528218c830288f6abb5e6"
+        }
+      ]
+    },
+    {
+      "id": "cervicitis-vaginitis",
+      "title": "Воспалительные болезни шейки матки, влагалища и вульвы",
+      "origin": "РСНПМЦЗМиР — стандарты диагностики и лечения",
+      "level": "base",
+      "revision": "2025-10-09",
+      "editions": [
+        {
+          "language": "ru",
+          "url": "https://uzaig.uz/media/attachments/2025/10/09/Standart_Vospalenia_sejki_matki_vulvy_i_vlagalisa_rus.pdf",
+          "filename": "Standart_Vospalenia_sejki_matki_vulvy_i_vlagalisa_rus.pdf",
+          "sha256": "e6df43dc119c35ed3e8c9a660b450d2325e51d559d710b484d3bd900de9eb54a"
+        },
+        {
+          "language": "uz",
+          "url": "https://uzaig.uz/media/attachments/2025/10/09/Standart_Vospalenia_sejki_matki_vulvy_i_vlagalisa_lot.pdf",
+          "filename": "Standart_Vospalenia_sejki_matki_vulvy_i_vlagalisa_lot.pdf",
+          "sha256": "1c964b99a9746dacf50f192af3b52bf09291e6797866715cb2969d3824e41988"
+        }
+      ]
+    },
+    {
+      "id": "who-anc-2016",
+      "title": "WHO recommendations on antenatal care for a positive pregnancy experience",
+      "origin": "Всемирная организация здравоохранения",
+      "level": "support",
+      "revision": "2016",
+      "editions": [
+        {
+          "language": "en",
+          "url": "https://www.who.int/publications/i/item/9789241549912"
+        }
+      ]
+    },
+    {
+      "id": "who-anc-highlights-2018",
+      "title": "WHO antenatal care recommendations — highlights and key messages",
+      "origin": "Всемирная организация здравоохранения",
+      "level": "support",
+      "revision": "2018",
+      "editions": [
+        {
+          "language": "en",
+          "url": "https://www.who.int/publications/i/item/WHO-RHR-18.02"
+        }
+      ]
+    }
+  ]
+}

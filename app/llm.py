@@ -6,6 +6,7 @@ import logging
 import threading
 import time
 from collections.abc import AsyncIterator, Callable
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -20,14 +21,26 @@ from axllm import (
     ax,
 )
 
-from app.prompt import SYSTEM_PROMPT
+from app.prompt import GROUNDING_INSTRUCTION, SYSTEM_PROMPT
 from app.schemas import AppError, ChatMessage
 from app.settings import Settings, get_settings
 
-CHAT_SIGNATURE = "conversation:string -> answer:string"
+CHAT_SIGNATURE = "conversation:string, fragments:string -> answer:string, sources:string[]"
 AxTransport = Callable[[dict[str, Any]], Any]
 
 reasoning_logger = logging.getLogger("app.reasoning")
+
+
+@dataclass(frozen=True)
+class Answer:
+    """Ответ программы: текст и заявленные моделью источники.
+
+    Заявленные — не значит подтверждённые: идентификаторы сверяются с реально
+    отобранными фрагментами выше по стеку.
+    """
+
+    text: str
+    source_ids: tuple[str, ...] = ()
 
 _JSON_TYPES = {
     "string": "string",
@@ -49,7 +62,12 @@ def response_schema(signature: str = CHAT_SIGNATURE) -> dict[str, Any]:
         name, _, kind = field.strip().partition(":")
         if not name:
             continue
-        properties[name] = {"type": _JSON_TYPES.get(kind.strip(), "string")}
+        kind = kind.strip()
+        if kind.endswith("[]"):
+            item = _JSON_TYPES.get(kind[:-2], "string")
+            properties[name] = {"type": "array", "items": {"type": item}}
+        else:
+            properties[name] = {"type": _JSON_TYPES.get(kind, "string")}
     return {
         "type": "json_schema",
         "json_schema": {
@@ -184,7 +202,7 @@ def _make_program():
     return ax(
         CHAT_SIGNATURE,
         {
-            "instruction": SYSTEM_PROMPT,
+            "instruction": SYSTEM_PROMPT + "\n" + GROUNDING_INSTRUCTION,
             "infra_retries": 0,
             "validation_retries": 0,
         },
@@ -219,29 +237,39 @@ class LLMClient:
             ],
         )
 
-    def _inputs(self, messages: list[ChatMessage]) -> dict[str, str]:
-        return {"conversation": format_conversation(messages)}
+    def _inputs(self, messages: list[ChatMessage], fragments: str = "") -> dict[str, str]:
+        return {
+            "conversation": format_conversation(messages),
+            "fragments": fragments or "Фрагменты не найдены.",
+        }
 
-    async def complete(self, messages: list[ChatMessage]) -> str:
+    async def complete(self, messages: list[ChatMessage], fragments: str = "") -> Answer:
         program = _make_program()
         try:
             result = await asyncio.to_thread(
                 program.forward,
                 self._ai,
-                self._inputs(messages),
+                self._inputs(messages, fragments),
             )
         except Exception as exc:
             raise _map_ax_error(exc) from exc
         answer = _answer_from_result(result)
         if answer is None or not answer.strip():
             raise AppError(502, "llm_error", "Модель вернула пустой ответ")
-        return answer
+        return Answer(answer, _sources_from_result(result))
 
-    async def start_chat_stream(self, messages: list[ChatMessage]) -> AsyncIterator[str]:
+    async def start_chat_stream(
+        self,
+        messages: list[ChatMessage],
+        fragments: str = "",
+        source_ids: list[str] | None = None,
+    ) -> AsyncIterator[str]:
+        """`source_ids`, если передан, наполняется идентификаторами источников
+        по завершении потока: в потоке они приходят последними."""
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[tuple[str, object]] = asyncio.Queue()
         program = _make_program()
-        values = self._inputs(messages)
+        values = self._inputs(messages, fragments)
 
         def run() -> None:
             try:
@@ -267,6 +295,8 @@ class LLMClient:
                     raise _map_ax_error(payload) from payload
                 if kind == "done":
                     answer = _parse_answer(buffer)
+                    if source_ids is not None:
+                        source_ids.extend(_sources_from_result(buffer))
                     if answer is None or not answer.strip():
                         raise AppError(502, "llm_error", "Модель вернула пустой ответ")
                     leftover = answer[emitted:]
@@ -353,6 +383,23 @@ def _answer_from_result(result: object) -> str | None:
     if isinstance(result, str):
         return _parse_answer(result)
     return None
+
+
+def _sources_from_result(result: object) -> tuple[str, ...]:
+    payload = result
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except json.JSONDecodeError:
+            return ()
+    if not isinstance(payload, dict):
+        return ()
+    values = payload.get("sources")
+    if isinstance(values, str):
+        values = [values]
+    if not isinstance(values, list):
+        return ()
+    return tuple(str(v) for v in values if isinstance(v, (str, int)))
 
 
 def _content_from_event(event: object) -> str:
