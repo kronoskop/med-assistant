@@ -12,7 +12,11 @@ from dataclasses import dataclass
 from app.corpus.index import Hit
 from app.corpus.service import Grounding, Retrieval
 from app.prompt import REFUSAL_EMPTY_CORPUS, REFUSAL_NO_MATCH
-from app.schemas import SourceFragment, SupportDocument
+from app.schemas import Clarification, Conflict, SourceFragment, SupportDocument
+
+# Больше трёх уточнений врач не прочитает, а ассистент, требующий заполнить
+# анкету, перестанет использоваться после второго раза.
+MAX_QUESTIONS = 3
 
 
 @dataclass(frozen=True)
@@ -39,21 +43,68 @@ def confirmed_sources(claimed: tuple[str, ...] | list[str], hits: tuple[Hit, ...
         if hit is None or hit.fragment.id in seen:
             continue
         seen.add(hit.fragment.id)
-        sources.append(
-            SourceFragment(
-                id=hit.fragment.id,
-                document_id=hit.document.id,
-                document_title=hit.document.title,
-                origin=hit.document.origin,
-                revision=hit.document.revision,
-                language=hit.fragment.language,
-                location=hit.fragment.location,
-                text=hit.fragment.text,
-                kind=hit.fragment.kind,
-                url=_edition_url(hit),
-            )
-        )
+        sources.append(_source_fragment(hit))
     return sources
+
+
+def _source_fragment(hit: Hit) -> SourceFragment:
+    return SourceFragment(
+        id=hit.fragment.id,
+        document_id=hit.document.id,
+        document_title=hit.document.title,
+        origin=hit.document.origin,
+        revision=hit.document.revision,
+        language=hit.fragment.language,
+        location=hit.fragment.location,
+        text=hit.fragment.text,
+        kind=hit.fragment.kind,
+        url=_edition_url(hit),
+    )
+
+
+def confirmed_questions(claimed, hits: tuple[Hit, ...]) -> list[Clarification]:
+    """Оставляет уточнения, опирающиеся на реально отобранные фрагменты.
+
+    Уточнение — это утверждение «протокол требует это учитывать». Без фрагмента
+    под ним оно превращается в догадку модели о том, что бывает важно, и
+    наследует все её ошибки.
+    """
+    by_id = {hit.fragment.id: hit for hit in hits}
+    out: list[Clarification] = []
+    seen: set[str] = set()
+    for item in claimed:
+        if not isinstance(item, dict):
+            continue
+        question = str(item.get("question") or "").strip()
+        hit = by_id.get(str(item.get("source") or "").strip())
+        if not question or hit is None or question.casefold() in seen:
+            continue
+        seen.add(question.casefold())
+        out.append(Clarification(question=question, source=_source_fragment(hit)))
+        if len(out) == MAX_QUESTIONS:
+            break
+    return out
+
+
+def confirmed_conflicts(claimed) -> list[Conflict]:
+    """Отметка без обеих сторон вычёркивается.
+
+    Врач должен видеть, что именно не сходится: «данные противоречивы» без
+    указания на что подрывает доверие ко всему ответу.
+    """
+    out: list[Conflict] = []
+    seen: set[tuple[str, str]] = set()
+    for item in claimed:
+        if not isinstance(item, dict):
+            continue
+        first = str(item.get("first") or "").strip()
+        second = str(item.get("second") or "").strip()
+        key = (first.casefold(), second.casefold())
+        if not first or not second or key[0] == key[1] or key in seen:
+            continue
+        seen.add(key)
+        out.append(Conflict(first=first, second=second))
+    return out
 
 
 def _edition_url(hit: Hit) -> str | None:

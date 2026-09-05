@@ -300,7 +300,15 @@ def test_outgoing_request_carries_answer_schema():
     schema = response_format["json_schema"]["schema"]
     assert schema["properties"]["answer"] == {"type": "string"}
     assert schema["properties"]["sources"] == {"type": "array", "items": {"type": "string"}}
-    assert schema["required"] == ["answer", "sources"]
+    assert schema["required"] == ["answer", "sources", "questions", "conflicts"]
+
+
+def test_question_schema_demands_a_fragment_reference():
+    """Схема не позволяет вернуть вопрос без фрагмента: сверять было бы нечего."""
+    schema = _capture_request()["body"]["response_format"]["json_schema"]["schema"]
+    item = schema["properties"]["questions"]["items"]
+    assert item["required"] == ["question", "source"]
+    assert item["additionalProperties"] is False
 
 
 def test_outgoing_request_never_asks_for_json_object():

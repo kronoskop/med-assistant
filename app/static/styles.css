@@ -26,6 +26,16 @@
   --danger: #c0392b;
   --ok: #2e7d62;
 
+  /* Тревожная поверхность: ошибки, признаки тревоги, несходящиеся сведения.
+     Тёплая производная от красного акцента — заметнее обычной карточки,
+     но не кричит. */
+  --flag-bg: #fdf5f3;
+  --flag-line: var(--accent-line);
+  --flag-title: var(--accent-hover);
+  --flag-icon: var(--accent);
+  --flag-ink: #5b4a47;
+  --flag-note: #7a655f;
+
   --thread-pad: 26px 26px;
   --composer-pad: 14px 26px 18px;
   --col-max: 660px;
@@ -373,6 +383,32 @@ button:focus-visible, a:focus-visible, textarea:focus-visible {
 
 .card.notfound { background: #fafbfb; }
 .card.notfound .card-title { color: var(--ink); text-transform: none; letter-spacing: 0; font-size: 13.5px; font-family: "Source Serif 4", Georgia, "Times New Roman", serif; }
+
+/* Уточнения — приглашение дополнить вопрос, поэтому карточка тихая, а сами
+   вопросы выглядят нажимаемыми. */
+.card.clarify { background: var(--brand-tint); border-color: var(--line); }
+.clarify-item {
+  display: flex; flex-direction: column; gap: 4px; width: 100%;
+  padding: 9px 11px; text-align: left; cursor: pointer;
+  background: #fff; border: 1px solid var(--line-field); border-radius: 8px;
+  font: inherit; color: inherit;
+}
+.clarify-item:hover { border-color: var(--brand); background: var(--brand-soft); }
+.clarify-q { font-size: 12.5px; line-height: 1.45; color: var(--ink); font-weight: 500; }
+.clarify-src { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--ink-faint); }
+.clarify-src .icon { font-size: 12px; flex: none; }
+
+/* Противоречие показывает обе стороны: «данные противоречивы» без указания
+   на что — бесполезно. */
+.card.conflict { background: var(--flag-bg); border-color: var(--flag-line); }
+.card.conflict .card-title { color: var(--flag-title); }
+.card.conflict .card-head .icon { color: var(--flag-icon); }
+.card.conflict .card-note { color: var(--flag-note); }
+.conflict-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.conflict-side {
+  font-size: 12.5px; line-height: 1.55; color: var(--flag-ink); font-style: italic;
+}
+.conflict-vs { flex: none; font-size: 13px; color: var(--flag-icon); }
 
 /* Таблицу не цитируем: извлечение из PDF расплющивает её в неразборчивую
    строку. Показываем ссылку на место в документе. */

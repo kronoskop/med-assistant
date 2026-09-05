@@ -27,6 +27,8 @@ class FakeLLM:
         self.compat_checks = 0
         self.fragments: list[str] = []
         self.claim_sources: list[str] = []
+        self.claim_questions: list[dict] = []
+        self.claim_conflicts: list[dict] = []
         self.reply = reply
         self.stream_parts = stream_parts or ["Привет", ", коллега"]
         self.calls: list[list[ChatMessage]] = []
@@ -36,15 +38,22 @@ class FakeLLM:
             raise AppError(503, "llm_unavailable", "LM Studio недоступен")
         self.calls.append(list(messages))
         self.fragments.append(fragments)
-        return Answer(self.reply, tuple(self.claim_sources))
+        return Answer(
+            self.reply,
+            tuple(self.claim_sources),
+            tuple(self.claim_questions),
+            tuple(self.claim_conflicts),
+        )
 
-    async def start_chat_stream(self, messages: list[ChatMessage], fragments: str = "", source_ids=None):
+    async def start_chat_stream(self, messages: list[ChatMessage], fragments: str = "", claims=None):
         if self.connect_error:
             raise AppError(503, "llm_unavailable", "LM Studio недоступен")
         self.calls.append(list(messages))
         self.fragments.append(fragments)
-        if source_ids is not None:
-            source_ids.extend(self.claim_sources)
+        if claims is not None:
+            claims.source_ids.extend(self.claim_sources)
+            claims.questions.extend(self.claim_questions)
+            claims.conflicts.extend(self.claim_conflicts)
 
         async def gen():
             for part in self.stream_parts:

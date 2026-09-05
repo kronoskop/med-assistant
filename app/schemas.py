@@ -58,6 +58,27 @@ class SupportDocument(BaseModel):
     url: str
 
 
+class Clarification(BaseModel):
+    """Уточняющий вопрос и фрагмент, из которого следует его необходимость.
+
+    Фрагмент передаётся целиком, а не идентификатором: он может не быть
+    процитирован в ответе, и тогда сноски, ведущей к нему, не существует.
+    """
+
+    question: str
+    source: SourceFragment
+
+
+class Conflict(BaseModel):
+    """Две несходящиеся стороны того, что сообщил врач.
+
+    Обе обязательны: «данные противоречивы» без указания на что — бесполезно.
+    """
+
+    first: str
+    second: str
+
+
 class ChatResponse(BaseModel):
     message: ChatMessage
     disclaimer: str
@@ -66,3 +87,5 @@ class ChatResponse(BaseModel):
     grounding: str = "grounded"
     sources: list[SourceFragment] = Field(default_factory=list)
     support: list[SupportDocument] = Field(default_factory=list)
+    questions: list[Clarification] = Field(default_factory=list)
+    conflicts: list[Conflict] = Field(default_factory=list)
