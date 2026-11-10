@@ -75,6 +75,7 @@ def build(
     *,
     root: Path | None = None,
     use_cache: bool = True,
+    workers: int = 1,
 ) -> tuple[list[Fragment], list[Document]]:
     """Собирает фрагменты из скачанных документов основы.
 
@@ -91,18 +92,33 @@ def build(
         if cached is not None:
             return cached, documents
 
+    jobs = [
+        (document.id, edition.language, str(path))
+        for document in documents
+        if document.level is EvidenceLevel.BASE  # подкрепление показывается ссылкой и фрагментов не даёт
+        for edition in document.local_editions
+        if (path := edition_path(root, document, edition)).exists()
+    ]
     fragments: list[Fragment] = []
-    for document in documents:
-        if document.level is not EvidenceLevel.BASE:
-            continue  # подкрепление показывается ссылкой и фрагментов не даёт
-        for edition in document.local_editions:
-            path = edition_path(root, document, edition)
-            if not path.exists():
-                continue
-            fragments.extend(split_document(document.id, edition.language, read_pages(path)))
+    if workers > 1 and len(jobs) > 1:
+        # Разбор PDF упирается в процессор, а документы независимы: каждый
+        # разбирается в своём процессе. Порядок фрагментов сохраняется.
+        from concurrent.futures import ProcessPoolExecutor
+
+        with ProcessPoolExecutor(max_workers=workers) as pool:
+            for part in pool.map(_split_file, jobs):
+                fragments.extend(part)
+    else:
+        for job in jobs:
+            fragments.extend(_split_file(job))
 
     _write_cache(root, signature, fragments)
     return fragments, documents
+
+
+def _split_file(job: tuple[str, str, str]) -> list[Fragment]:
+    document_id, language, path = job
+    return split_document(document_id, language, read_pages(Path(path)))
 
 
 def corpus_signature(documents: list[Document]) -> str:

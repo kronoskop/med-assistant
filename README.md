@@ -225,11 +225,19 @@ make bench ARGS="--lang uz --repeat 3"
 
 Сервис остаётся на `127.0.0.1`, а в сеть Tailscale его выставляет `tailscale serve`: интерфейс видят только устройства вашей сети, без открытия порта в локальной сети клиники.
 
-1. В LM Studio загрузите MedGemma и `text-embedding-multilingual-e5-small`, запустите сервер. Если для модели есть MLX-сборка, берите её: на Apple Silicon она обычно быстрее GGUF. Для `CLARIFY_MODE=parallel` поставьте Max Concurrent Predictions не меньше 2.
-2. `make install`, затем наполните корпус и соберите индекс (раздел «Корпус документов»).
-3. `make run`.
-4. `tailscale serve --bg 8000` — интерфейс откроется по адресу `https://<имя-машины>.<ваш-tailnet>.ts.net/ui`.
-5. Замер: `make bench-retrieval`, затем `make bench ARGS="--label parallel"`; повторите с `CLARIFY_MODE=after make run` и `CLARIFY_MODE=off make run`.
+Заранее: в LM Studio скачайте MedGemma и `text-embedding-multilingual-e5-small`. Если для MedGemma есть MLX-сборка, берите её: на Apple Silicon она обычно быстрее GGUF. Для `CLARIFY_MODE=parallel` поставьте в LM Studio Max Concurrent Predictions не меньше 2.
+
+Дальше одна команда из корня репозитория:
+
+```bash
+./tools/setup_demo.sh
+```
+
+Скрипт ставит `uv`, если его нет; запускает сервер LM Studio через `lms`, если тот не отвечает; находит модели и записывает их в `.env`; ставит зависимости; скачивает корпус и собирает индекс (PDF разбираются параллельно на всех ядрах, повторный запуск берёт кеш); поднимает сервис в фоне и выставляет его в Tailscale. В конце печатает адрес интерфейса. Остановить: `./tools/setup_demo.sh stop`, журнал сервера — `demo.log`.
+
+Корпус и индекс можно собрать и отдельно: `uv run python tools/build_corpus.py`.
+
+Замер после запуска: `make bench-retrieval`, затем `make bench ARGS="--label parallel"`; повторите с `CLARIFY_MODE=after` и `CLARIFY_MODE=off` в `.env` и перезапуском скрипта.
 
 Авторизации у сервиса по-прежнему нет: доступ ограничивает только сеть Tailscale.
 
