@@ -18,3 +18,4 @@ design/**/clinicompass-interface.html
 # воспроизводятся по app/corpus/documents.json.
 # Ведущий слэш обязателен: без него правило скрыло бы и app/corpus/ с кодом.
 /corpus/
+eval/results/

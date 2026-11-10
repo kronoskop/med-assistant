@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import threading
 import time
 from collections.abc import AsyncIterator, Callable
@@ -25,13 +26,12 @@ from app.prompt import GROUNDING_INSTRUCTION, QUESTIONS_INSTRUCTION, SYSTEM_PROM
 from app.schemas import AppError, ChatMessage
 from app.settings import Settings, get_settings
 
-CHAT_SIGNATURE = (
-    "conversation:string, fragments:string -> "
-    "answer:string, sources:string[], questions?:json[], conflicts?:json[]"
-)
-# `?` — уточнения необязательны для Ax: ответ не должен пропасть целиком из-за
-# того, что модель не выдала второстепенное поле. Схеме на проводе они всё
-# равно предписаны, поэтому обычно приходят.
+ANSWER_SIGNATURE = "conversation:string, fragments:string -> answer:string"
+# Уточнения и противоречия — отдельная короткая программа: ответ врачу не ждёт,
+# пока модель допишет второстепенные поля, а их сбой не роняет ответ.
+CLARIFY_SIGNATURE = "conversation:string, fragments:string -> questions?:json[], conflicts?:json[]"
+# Ссылки на фрагменты отдельным полем не запрашиваются: они уже стоят в тексте
+# ответа маркерами, и повторять их списком — лишние токены.
 AxTransport = Callable[[dict[str, Any]], Any]
 
 reasoning_logger = logging.getLogger("app.reasoning")
@@ -50,6 +50,7 @@ class Answer:
     source_ids: tuple[str, ...] = ()
     questions: tuple[Any, ...] = ()
     conflicts: tuple[Any, ...] = ()
+    reasoning_chars: int = 0
 
 
 @dataclass
@@ -63,6 +64,8 @@ class Claims:
     source_ids: list[str] = field(default_factory=list)
     questions: list[Any] = field(default_factory=list)
     conflicts: list[Any] = field(default_factory=list)
+    reasoning_chars: int = 0
+    clarify_ms: float | None = None
 
 
 _JSON_TYPES = {
@@ -96,7 +99,7 @@ _OBJECT_ITEMS = {
 }
 
 
-def response_schema(signature: str = CHAT_SIGNATURE) -> dict[str, Any]:
+def response_schema(signature: str = ANSWER_SIGNATURE, schema_name: str = "assistant_answer") -> dict[str, Any]:
     """Схема ответа по выходным полям сигнатуры программы.
 
     MedGemma — reasoning-модель: текстовая инструкция «верни JSON» её не
@@ -120,7 +123,7 @@ def response_schema(signature: str = CHAT_SIGNATURE) -> dict[str, Any]:
     return {
         "type": "json_schema",
         "json_schema": {
-            "name": "assistant_answer",
+            "name": schema_name,
             "strict": True,
             "schema": {
                 "type": "object",
@@ -173,33 +176,74 @@ def _reasoning_from_body(body: object) -> str | None:
     return value if isinstance(value, str) else None
 
 
+# Ax вставляет в системный промпт правило формы ответа для текстового режима
+# («поле: значение по строкам») и тут же отдельным сообщением просит JSON.
+# Форму держит схема на стороне сервера модели, поэтому противоречивое правило
+# снимается: маленькой модели оно только мешает и стоит лишних токенов.
+_FORMATTING_RULES = re.compile(r"\n*<formatting_rules>.*?</formatting_rules>\n*", re.S)
+
+
+def strip_formatting_rules(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out = []
+    for message in messages:
+        content = message.get("content")
+        if message.get("role") == "system" and isinstance(content, str):
+            message = {**message, "content": _FORMATTING_RULES.sub("\n", content).strip()}
+        out.append(message)
+    return out
+
+
 class LMStudioCompatibleClient(OpenAICompatibleClient):
     """Приводит исходящий запрос к виду, который принимают LM Studio и шаблон
-    загруженной модели, не трогая сетевой слой Ax."""
+    загруженной модели, не трогая сетевой слой Ax.
 
-    def __init__(self, *args: Any, settings: Settings, **kwargs: Any) -> None:
+    Один клиент — одна программа: у программы своя схема ответа и свой
+    потолок длины. Клиент создаётся на запрос, поэтому счётчик рассуждения
+    принадлежит одному запросу врача.
+    """
+
+    def __init__(
+        self,
+        *args: Any,
+        settings: Settings,
+        schema: dict[str, Any],
+        max_tokens: int,
+        **kwargs: Any,
+    ) -> None:
         self._settings = settings
+        self._schema = schema
+        self._max_tokens = max_tokens
+        self.reasoning_chars = 0
         super().__init__(*args, **kwargs)
 
     def _request_json(self, endpoint: str, payload: dict[str, Any], **kwargs: Any):
         if isinstance(payload, dict) and "messages" in payload:
             payload = dict(payload)
-            payload["messages"] = merge_adjacent_roles(payload["messages"])
-            payload["response_format"] = response_schema()
+            payload["messages"] = merge_adjacent_roles(strip_formatting_rules(payload["messages"]))
+            payload["response_format"] = self._schema
+            payload.pop("max_completion_tokens", None)
+            payload["max_tokens"] = self._max_tokens
         result = super()._request_json(endpoint, payload, **kwargs)
         if not kwargs.get("stream"):
-            _log_reasoning(self._settings, _reasoning_from_body(result))
-            return result
-        if not self._settings.log_model_reasoning:
+            reasoning = _reasoning_from_body(result)
+            self.reasoning_chars += len(reasoning or "")
+            _log_reasoning(self._settings, reasoning)
             return result
         return self._tee_reasoning(result)
 
     def _tee_reasoning(self, chunks: Any) -> Any:
+        # Длина рассуждения считается всегда — это число, не клинический текст;
+        # сам текст собирается только при явно включённой отладке.
+        keep = self._settings.log_model_reasoning
         collected: list[str] = []
         for chunk in chunks:
-            collected.append(_reasoning_from_sse(chunk))
+            piece = _reasoning_from_sse(chunk)
+            self.reasoning_chars += len(piece)
+            if keep:
+                collected.append(piece)
             yield chunk
-        _log_reasoning(self._settings, "".join(collected))
+        if keep:
+            _log_reasoning(self._settings, "".join(collected))
 
 
 def _reasoning_from_sse(chunk: object) -> str:
@@ -247,17 +291,29 @@ def format_conversation(messages: list[ChatMessage]) -> str:
     return "\n".join(f"{message.role}: {message.content}" for message in messages)
 
 
-def _make_program():
+def _make_answer_program():
     return ax(
-        CHAT_SIGNATURE,
+        ANSWER_SIGNATURE,
         {
-            "instruction": "\n".join(
-                (SYSTEM_PROMPT, GROUNDING_INSTRUCTION, QUESTIONS_INSTRUCTION)
-            ),
+            "instruction": "\n".join((SYSTEM_PROMPT, GROUNDING_INSTRUCTION)),
             "infra_retries": 0,
             "validation_retries": 0,
         },
     )
+
+
+def _make_clarify_program():
+    return ax(
+        CLARIFY_SIGNATURE,
+        {
+            "instruction": "\n".join((SYSTEM_PROMPT, QUESTIONS_INSTRUCTION)),
+            "infra_retries": 0,
+            "validation_retries": 0,
+        },
+    )
+
+
+clarify_logger = logging.getLogger("app.clarify")
 
 
 class LLMClient:
@@ -269,13 +325,23 @@ class LLMClient:
     ) -> None:
         self._settings = settings
         self._http_client = http_client
-        self._ai = LMStudioCompatibleClient(
+        self._transport = transport
+        self._ai = self._make_ai(response_schema(), settings.answer_max_tokens)
+        self._clarify_ai = self._make_ai(
+            response_schema(CLARIFY_SIGNATURE, "assistant_clarify"), settings.clarify_max_tokens
+        )
+
+    def _make_ai(self, schema: dict[str, Any], max_tokens: int) -> LMStudioCompatibleClient:
+        settings = self._settings
+        return LMStudioCompatibleClient(
             settings=settings,
+            schema=schema,
+            max_tokens=max_tokens,
             api_key=settings.lmstudio_api_key,
             model=settings.lmstudio_model,
             base_url=settings.lmstudio_base_url,
             timeout=settings.lmstudio_timeout_seconds,
-            transport=transport,
+            transport=self._transport,
             model_config={"temperature": 0.2},
             model_info=[
                 {
@@ -288,30 +354,64 @@ class LLMClient:
             ],
         )
 
+    @property
+    def reasoning_chars(self) -> int:
+        return self._ai.reasoning_chars + self._clarify_ai.reasoning_chars
+
     def _inputs(self, messages: list[ChatMessage], fragments: str = "") -> dict[str, str]:
         return {
             "conversation": format_conversation(messages),
             "fragments": fragments or "Фрагменты не найдены.",
         }
 
-    async def complete(self, messages: list[ChatMessage], fragments: str = "") -> Answer:
-        program = _make_program()
+    async def _clarify(self, values: dict[str, str]) -> tuple[tuple[Any, ...], tuple[Any, ...], float]:
+        """Уточнения и противоречия. Сбой здесь не роняет ответ: уточнения
+        дополняют ответ и не могут быть причиной его потери."""
+        started = time.perf_counter()
         try:
-            result = await asyncio.to_thread(
-                program.forward,
-                self._ai,
-                self._inputs(messages, fragments),
-            )
+            result = await asyncio.to_thread(_make_clarify_program().forward, self._clarify_ai, values)
+        except Exception as exc:  # noqa: BLE001 — любой сбой даёт пустые уточнения
+            clarify_logger.warning("уточнения не получены: %s", _map_ax_error(exc).code)
+            return (), (), round((time.perf_counter() - started) * 1000, 1)
+        return (
+            _objects_from_result(result, "questions"),
+            _objects_from_result(result, "conflicts"),
+            round((time.perf_counter() - started) * 1000, 1),
+        )
+
+    def _start_clarify(self, values: dict[str, str]) -> asyncio.Task | None:
+        if self._settings.clarify_mode != "parallel":
+            return None
+        return asyncio.create_task(self._clarify(values))
+
+    async def _finish_clarify(self, task: asyncio.Task | None, values: dict[str, str]):
+        if task is not None:
+            return await task
+        if self._settings.clarify_mode == "after":
+            return await self._clarify(values)
+        return (), (), None
+
+    async def complete(self, messages: list[ChatMessage], fragments: str = "") -> Answer:
+        values = self._inputs(messages, fragments)
+        clarify = self._start_clarify(values)
+        try:
+            result = await asyncio.to_thread(_make_answer_program().forward, self._ai, values)
         except Exception as exc:
+            if clarify is not None:
+                clarify.cancel()
             raise _map_ax_error(exc) from exc
         answer = _answer_from_result(result)
         if answer is None or not answer.strip():
+            if clarify is not None:
+                clarify.cancel()
             raise AppError(502, "llm_error", "Модель вернула пустой ответ")
+        questions, conflicts, _ = await self._finish_clarify(clarify, values)
         return Answer(
             answer,
-            _sources_from_result(result),
-            _objects_from_result(result, "questions"),
-            _objects_from_result(result, "conflicts"),
+            cited_ids(answer),
+            questions,
+            conflicts,
+            self.reasoning_chars,
         )
 
     async def start_chat_stream(
@@ -320,12 +420,13 @@ class LLMClient:
         fragments: str = "",
         claims: Claims | None = None,
     ) -> AsyncIterator[str]:
-        """`claims`, если передан, наполняется заявленным моделью по завершении
-        потока: в JSON эти поля идут после текста ответа."""
+        """`claims`, если передан, наполняется по завершении потока: ссылками
+        из текста ответа и уточнениями из отдельной программы."""
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[tuple[str, object]] = asyncio.Queue()
-        program = _make_program()
+        program = _make_answer_program()
         values = self._inputs(messages, fragments)
+        clarify = self._start_clarify(values)
 
         def run() -> None:
             try:
@@ -338,36 +439,39 @@ class LLMClient:
         threading.Thread(target=run, daemon=True).start()
         first = await queue.get()
         if first[0] == "error":
+            if clarify is not None:
+                clarify.cancel()
             raise _map_ax_error(first[1]) from first[1]
 
         async def tokens() -> AsyncIterator[str]:
             pending: list[tuple[str, object]] = [first]
-            buffer = ""
-            emitted = 0
-
-            while True:
-                kind, payload = pending.pop(0) if pending else await queue.get()
-                if kind == "error":
-                    raise _map_ax_error(payload) from payload
-                if kind == "done":
-                    answer = _parse_answer(buffer)
-                    if claims is not None:
-                        claims.source_ids.extend(_sources_from_result(buffer))
-                        claims.questions.extend(_objects_from_result(buffer, "questions"))
-                        claims.conflicts.extend(_objects_from_result(buffer, "conflicts"))
-                    if answer is None or not answer.strip():
-                        raise AppError(502, "llm_error", "Модель вернула пустой ответ")
-                    leftover = answer[emitted:]
-                    if leftover:
-                        yield leftover
-                    return
-                buffer += _content_from_event(payload)
-                partial = _parse_answer(buffer)
-                if partial is not None and len(partial) > emitted:
-                    chunk = partial[emitted:]
-                    emitted = len(partial)
+            reader = AnswerStream()
+            try:
+                while True:
+                    kind, payload = pending.pop(0) if pending else await queue.get()
+                    if kind == "error":
+                        raise _map_ax_error(payload) from payload
+                    if kind == "done":
+                        answer = _parse_answer(reader.buffer)
+                        if answer is None or not answer.strip():
+                            raise AppError(502, "llm_error", "Модель вернула пустой ответ")
+                        leftover = answer[reader.emitted :]
+                        if leftover:
+                            yield leftover
+                        questions, conflicts, clarify_ms = await self._finish_clarify(clarify, values)
+                        if claims is not None:
+                            claims.source_ids.extend(cited_ids(answer))
+                            claims.questions.extend(questions)
+                            claims.conflicts.extend(conflicts)
+                            claims.reasoning_chars = self.reasoning_chars
+                            claims.clarify_ms = clarify_ms
+                        return
+                    chunk = reader.feed(_content_from_event(payload))
                     if chunk:
                         yield chunk
+            finally:
+                if clarify is not None and not clarify.done():
+                    clarify.cancel()
 
         return tokens()
 
@@ -432,6 +536,97 @@ class LLMClient:
 
 def get_llm() -> LLMClient:
     return LLMClient(get_settings())
+
+
+# Ссылка внутри ответа: [document:язык:страница:порядок]
+CITATION = re.compile(r"\[([^\[\]]+:[^\[\]]+:\d+:\d+)\]")
+
+
+def cited_ids(text: str) -> tuple[str, ...]:
+    """Идентификаторы фрагментов в порядке первого упоминания в тексте."""
+    return tuple(dict.fromkeys(CITATION.findall(text or "")))
+
+
+class AnswerStream:
+    """Достаёт текст поля `answer` из JSON, пока тот ещё пишется.
+
+    Разбирает только новые символы: прежний способ перечитывал весь буфер на
+    каждом токене, и длинный ответ стоил квадратично.
+    """
+
+    _ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "b": "\b", "f": "\f", '"': '"', "\\": "\\", "/": "/"}
+
+    def __init__(self) -> None:
+        self.buffer = ""
+        self.emitted = 0
+        self._pos = 0          # с какого символа буфера продолжать разбор
+        self._inside = False   # внутри строки answer
+        self._closed = False
+
+    def feed(self, text: str) -> str:
+        self.buffer += text
+        if self._closed:
+            return ""
+        if not self._inside and not self._find_start():
+            return ""
+        out: list[str] = []
+        buf, i = self.buffer, self._pos
+        while i < len(buf):
+            char = buf[i]
+            if char == "\\":
+                if i + 1 >= len(buf):
+                    break  # продолжение escape придёт следующим токеном
+                code = buf[i + 1]
+                if code == "u":
+                    decoded, size = _unicode_escape(buf, i)
+                    if size == 0:
+                        break  # escape ещё не дописан
+                    out.append(decoded)
+                    i += size
+                    continue
+                out.append(self._ESCAPES.get(code, code))
+                i += 2
+                continue
+            if char == '"':
+                self._closed = True
+                i += 1
+                break
+            out.append(char)
+            i += 1
+        self._pos = i
+        chunk = "".join(out)
+        self.emitted += len(chunk)
+        return chunk
+
+    def _find_start(self) -> bool:
+        match = re.search(r'"answer"\s*:\s*"', self.buffer)
+        if match is None:
+            return False
+        self._inside = True
+        self._pos = match.end()
+        return True
+
+
+def _unicode_escape(buf: str, i: int) -> tuple[str, int]:
+    """`\\uXXXX` с позиции i: символ и длина escape; (\"\", 0) — не дописан.
+    Суррогатная пара склеивается в один символ, как это делает json."""
+    if i + 6 > len(buf):
+        return "", 0
+    try:
+        code = int(buf[i + 2 : i + 6], 16)
+    except ValueError:
+        return "", 6
+    if 0xD800 <= code < 0xDC00:
+        if i + 12 > len(buf):
+            return "", 0
+        if buf[i + 6 : i + 8] == "\\u":
+            try:
+                low = int(buf[i + 8 : i + 12], 16)
+            except ValueError:
+                low = 0
+            if 0xDC00 <= low < 0xE000:
+                return chr(0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00)), 12
+    return chr(code), 6
 
 
 def _answer_from_result(result: object) -> str | None:

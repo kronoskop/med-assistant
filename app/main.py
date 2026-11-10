@@ -16,7 +16,24 @@ access_logger = logging.getLogger("app.access")
 startup_logger = logging.getLogger("app.startup")
 
 
+def _configure_logging() -> None:
+    """Журнал обращений и время по этапам выводятся в консоль сервера.
+
+    uvicorn настраивает только свои логгеры, и без этого записи `app.*`
+    терялись. Логгер рассуждения модели сюда не входит: он пишет на уровне
+    DEBUG и включается отдельно.
+    """
+    logger = logging.getLogger("app")
+    if logger.handlers:
+        return
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s %(name)s %(message)s"))
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+
+
 def create_app() -> FastAPI:
+    _configure_logging()
     application = FastAPI(
         title="med-assistant",
         description="HTTP API медицинского ИИ-ассистента",

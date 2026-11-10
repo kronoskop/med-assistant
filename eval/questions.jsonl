@@ -1,0 +1,62 @@
+{"id": "ru-01", "lang": "ru", "kind": "grounded", "question": "Какая тактика при подозрении на врастание плаценты по данным УЗИ?", "expected_docs": ["placenta-accreta"]}
+{"id": "ru-02", "lang": "ru", "kind": "grounded", "question": "Как часто проводить УЗИ при монохориальной двойне?", "expected_docs": ["multiple-pregnancy"]}
+{"id": "ru-03", "lang": "ru", "kind": "grounded", "question": "Как классифицируются разрывы промежности по степени?", "expected_docs": ["perineal-tears"]}
+{"id": "ru-04", "lang": "ru", "kind": "grounded", "question": "Какое обследование пары назначить при бесплодии в течение года?", "expected_docs": ["female-infertility"]}
+{"id": "ru-05", "lang": "ru", "kind": "grounded", "question": "Когда показано вскрытие абсцесса бартолиновой железы?", "expected_docs": ["bartholin-gland"]}
+{"id": "ru-06", "lang": "ru", "kind": "grounded", "question": "Чем лечить бактериальный вагиноз у беременной?", "expected_docs": ["cervicitis-vaginitis"]}
+{"id": "ru-07", "lang": "ru", "kind": "grounded", "question": "Первая доза адреналина при анафилактическом шоке у взрослого?", "expected_docs": ["mz-748", "mz-749"]}
+{"id": "ru-08", "lang": "ru", "kind": "grounded", "question": "Какой препарат купирует острый приступ наследственного ангиоотёка?", "expected_docs": ["mz-752", "mz-753"]}
+{"id": "ru-09", "lang": "ru", "kind": "grounded", "question": "При каком уровне гемоглобина у беременной диагностируют анемию?", "expected_docs": ["mz-777", "mz-778"]}
+{"id": "ru-10", "lang": "ru", "kind": "grounded", "question": "Какая доза железа для профилактики анемии во время беременности?", "expected_docs": ["mz-777", "mz-778"]}
+{"id": "ru-11", "lang": "ru", "kind": "grounded", "question": "Сколько антенатальных визитов рекомендовано беременной группы риска?", "expected_docs": ["mz-779", "mz-780"]}
+{"id": "ru-12", "lang": "ru", "kind": "grounded", "question": "На каком сроке проводить глюкозотолерантный тест для выявления гестационного диабета?", "expected_docs": ["mz-781", "mz-782"]}
+{"id": "ru-13", "lang": "ru", "kind": "grounded", "question": "Какие целевые значения гликемии натощак при гестационном сахарном диабете?", "expected_docs": ["mz-781", "mz-782"]}
+{"id": "ru-14", "lang": "ru", "kind": "grounded", "question": "Как оценить тяжесть синдрома гиперстимуляции яичников?", "expected_docs": ["mz-783", "mz-784"]}
+{"id": "ru-15", "lang": "ru", "kind": "grounded", "question": "Какие абсолютные показания к кесареву сечению?", "expected_docs": ["mz-785", "mz-786"]}
+{"id": "ru-16", "lang": "ru", "kind": "grounded", "question": "Какая антибиотикопрофилактика при кесаревом сечении?", "expected_docs": ["mz-785", "mz-786"]}
+{"id": "ru-17", "lang": "ru", "kind": "grounded", "question": "Противопоказания к менопаузальной гормональной терапии?", "expected_docs": ["mz-787", "mz-788"]}
+{"id": "ru-18", "lang": "ru", "kind": "grounded", "question": "Когда показана миомэктомия при миоме матки?", "expected_docs": ["mz-789", "mz-790"]}
+{"id": "ru-19", "lang": "ru", "kind": "grounded", "question": "Тактика при преждевременном разрыве плодных оболочек на 32 неделе?", "expected_docs": ["mz-791", "mz-792"]}
+{"id": "ru-20", "lang": "ru", "kind": "grounded", "question": "Какие признаки хориоамнионита?", "expected_docs": ["mz-791", "mz-792"]}
+{"id": "ru-21", "lang": "ru", "kind": "grounded", "question": "Какие стадии пролапса тазовых органов по POP-Q?", "expected_docs": ["mz-793", "mz-794"]}
+{"id": "ru-22", "lang": "ru", "kind": "grounded", "question": "Когда начинать заполнять партограмму и что означает линия действия?", "expected_docs": ["mz-795", "mz-796"]}
+{"id": "ru-23", "lang": "ru", "kind": "grounded", "question": "Какие методы контрацепции допустимы при грудном вскармливании?", "expected_docs": ["mz-797"]}
+{"id": "ru-24", "lang": "ru", "kind": "grounded", "question": "Показания к гистероскопической полипэктомии при полипе эндометрия?", "expected_docs": ["mz-798", "mz-799"]}
+{"id": "ru-25", "lang": "ru", "kind": "grounded", "question": "Как часто осматривать родильницу в первые сутки после родов?", "expected_docs": ["mz-800", "mz-801"]}
+{"id": "ru-26", "lang": "ru", "kind": "grounded", "question": "Какое обследование при привычном невынашивании?", "expected_docs": ["mz-802", "mz-803"]}
+{"id": "ru-27", "lang": "ru", "kind": "grounded", "question": "Медикаментозное ведение неполного выкидыша: какие препараты и дозы?", "expected_docs": ["mz-804", "mz-805"]}
+{"id": "ru-28", "lang": "ru", "kind": "grounded", "question": "Какой объём инфузии в первый час при септическом шоке у родильницы?", "expected_docs": ["mz-806", "mz-807"]}
+{"id": "ru-29", "lang": "ru", "kind": "grounded", "question": "С какого возраста и как часто проводить скрининг рака шейки матки?", "expected_docs": ["mz-808", "mz-809"]}
+{"id": "ru-30", "lang": "ru", "kind": "grounded", "question": "Тактика при CIN II у женщины 25 лет?", "expected_docs": ["mz-808", "mz-809"]}
+{"id": "ru-31", "lang": "ru", "kind": "grounded", "question": "Как лечить бессимптомную бактериурию у беременной?", "expected_docs": ["mz-1110", "mz-1111"]}
+{"id": "ru-32", "lang": "ru", "kind": "grounded", "question": "Когда начинать ИВЛ маской у новорождённого без дыхания?", "expected_docs": ["mz-1337", "mz-1338"]}
+{"id": "ru-33", "lang": "ru", "kind": "grounded", "question": "Когда вводить сурфактант недоношенному с респираторным дистресс-синдромом?", "expected_docs": ["mz-1339", "mz-1340"]}
+{"id": "ru-34", "lang": "ru", "kind": "grounded", "question": "Беременность 28 недель, двойня, гемоглобин 95 г/л. Что назначить?", "expected_docs": ["mz-777", "mz-778", "multiple-pregnancy"]}
+{"id": "uz-01", "lang": "uz", "kind": "grounded", "question": "Homiladorlikda temir tanqisligi anemiyasi qaysi gemoglobin darajasida qo'yiladi?", "expected_docs": ["mz-777", "mz-778"]}
+{"id": "uz-02", "lang": "uz", "kind": "grounded", "question": "Gestatsion qandli diabetni aniqlash uchun glyukozaga tolerantlik testi qachon o'tkaziladi?", "expected_docs": ["mz-781", "mz-782"]}
+{"id": "uz-03", "lang": "uz", "kind": "grounded", "question": "Kesar kesish operatsiyasiga mutlaq ko'rsatmalar qaysilar?", "expected_docs": ["mz-785", "mz-786"]}
+{"id": "uz-04", "lang": "uz", "kind": "grounded", "question": "Homila pardalarining muddatidan oldin yorilishida qanday taktika tanlanadi?", "expected_docs": ["mz-791", "mz-792"]}
+{"id": "uz-05", "lang": "uz", "kind": "grounded", "question": "Partogramma qachon to'ldiriladi?", "expected_docs": ["mz-795", "mz-796"]}
+{"id": "uz-06", "lang": "uz", "kind": "grounded", "question": "Bachadon miomasida qachon operatsiya ko'rsatiladi?", "expected_docs": ["mz-789", "mz-790"]}
+{"id": "uz-07", "lang": "uz", "kind": "grounded", "question": "Odatiy homila tushishida qanday tekshiruvlar o'tkaziladi?", "expected_docs": ["mz-802", "mz-803"]}
+{"id": "uz-08", "lang": "uz", "kind": "grounded", "question": "Bachadon bo'yni saratoni skriningi necha yoshdan boshlanadi?", "expected_docs": ["mz-808", "mz-809"]}
+{"id": "uz-09", "lang": "uz", "kind": "grounded", "question": "Homilador ayolda simptomsiz bakteriuriya qanday davolanadi?", "expected_docs": ["mz-1110", "mz-1111"]}
+{"id": "uz-10", "lang": "uz", "kind": "grounded", "question": "Yangi tug'ilgan chaqaloqda respirator distress sindromida surfaktant qachon yuboriladi?", "expected_docs": ["mz-1339", "mz-1340"]}
+{"id": "uz-11", "lang": "uz", "kind": "grounded", "question": "Akusherlikda septik shokda birinchi soatda qancha infuziya qilinadi?", "expected_docs": ["mz-806", "mz-807"]}
+{"id": "uz-12", "lang": "uz", "kind": "grounded", "question": "Platsenta o'sib kirishiga gumon bo'lsa, qanday harakat qilinadi?", "expected_docs": ["placenta-accreta"]}
+{"id": "en-01", "lang": "en", "kind": "grounded", "question": "What hemoglobin level defines anemia in pregnancy and what iron dose is recommended?", "expected_docs": ["mz-777", "mz-778"]}
+{"id": "en-02", "lang": "en", "kind": "grounded", "question": "When should the oral glucose tolerance test for gestational diabetes be done?", "expected_docs": ["mz-781", "mz-782"]}
+{"id": "en-03", "lang": "en", "kind": "grounded", "question": "What are the absolute indications for caesarean section?", "expected_docs": ["mz-785", "mz-786"]}
+{"id": "en-04", "lang": "en", "kind": "grounded", "question": "How to manage preterm prelabour rupture of membranes at 32 weeks?", "expected_docs": ["mz-791", "mz-792"]}
+{"id": "en-05", "lang": "en", "kind": "grounded", "question": "What is the first-line dose of adrenaline in anaphylactic shock?", "expected_docs": ["mz-748", "mz-749"]}
+{"id": "en-06", "lang": "en", "kind": "grounded", "question": "How often should ultrasound be performed in monochorionic twin pregnancy?", "expected_docs": ["multiple-pregnancy"]}
+{"id": "en-07", "lang": "en", "kind": "grounded", "question": "When is surfactant indicated for a preterm newborn with respiratory distress syndrome?", "expected_docs": ["mz-1339", "mz-1340"]}
+{"id": "en-08", "lang": "en", "kind": "grounded", "question": "At what age should cervical cancer screening start and how often?", "expected_docs": ["mz-808", "mz-809"]}
+{"id": "en-09", "lang": "en", "kind": "grounded", "question": "How is asymptomatic bacteriuria treated in pregnancy?", "expected_docs": ["mz-1110", "mz-1111"]}
+{"id": "en-10", "lang": "en", "kind": "grounded", "question": "What fluid volume is given in the first hour of obstetric septic shock?", "expected_docs": ["mz-806", "mz-807"]}
+{"id": "off-01", "lang": "ru", "kind": "off_topic", "question": "Какая доза амоксициллина при внебольничной пневмонии у ребёнка 5 лет?", "expected_docs": []}
+{"id": "off-02", "lang": "ru", "kind": "off_topic", "question": "Как лечить подагрический артрит?", "expected_docs": []}
+{"id": "off-03", "lang": "ru", "kind": "off_topic", "question": "Какой курс валют сегодня?", "expected_docs": []}
+{"id": "off-04", "lang": "uz", "kind": "off_topic", "question": "Bolalarda o'tkir otitni qanday davolash kerak?", "expected_docs": []}
+{"id": "off-05", "lang": "en", "kind": "off_topic", "question": "What is the treatment for acute myocardial infarction?", "expected_docs": []}
+{"id": "off-06", "lang": "en", "kind": "off_topic", "question": "Write me a poem about the sea.", "expected_docs": []}

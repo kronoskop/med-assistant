@@ -1,4 +1,7 @@
+import asyncio
 import json
+import logging
+import time
 from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Depends
@@ -20,6 +23,10 @@ from app.prompt import DISCLAIMER
 from app.schemas import AppError, ChatMessage, ChatRequest, ChatResponse
 
 router = APIRouter()
+
+# Время по этапам — без текста запроса и ответа: по нему видно, где теряются
+# секунды, а клинического содержания в нём нет.
+timing_logger = logging.getLogger("app.timing")
 
 
 @router.get("/health")
@@ -50,7 +57,11 @@ async def chat(
     llm: LLMClient = Depends(get_llm),
     retriever: Retriever = Depends(get_retriever),
 ):
-    retrieval = retriever(last_question(body.messages))
+    started = time.perf_counter()
+    # Отбор синхронный (эмбеддинг — сетевой запрос): в отдельном потоке он не
+    # останавливает обслуживание остальных врачей.
+    retrieval = await asyncio.to_thread(retriever, last_question(body.messages))
+    retrieval_ms = _ms(started)
 
     # Без фрагментов основы модель не зовём вовсе: отказ формулирует сервер,
     # иначе ответ пришёл бы из памяти модели.
@@ -65,9 +76,19 @@ async def chat(
     if body.stream:
         claims = Claims()
         chunks = await llm.start_chat_stream(body.messages, fragments, claims)
-        return StreamingResponse(_sse(chunks, claims, retrieval, said), media_type="text/event-stream")
+        timing = {"started": started, "retrieval_ms": retrieval_ms}
+        return StreamingResponse(
+            _sse(chunks, claims, retrieval, said, timing), media_type="text/event-stream"
+        )
 
     answer = await llm.complete(body.messages, fragments)
+    _log_timing(
+        stream=False,
+        retrieval_ms=retrieval_ms,
+        total_ms=_ms(started),
+        reasoning_chars=getattr(answer, "reasoning_chars", 0),
+        answer_chars=len(answer.text),
+    )
     woven, inline = weave_citations(answer.text, retrieval.hits)
     claimed = [s.id for s in inline] or list(answer.source_ids)
     sources, grounded, _ = _settle(woven, retrieval, claimed)
@@ -121,12 +142,41 @@ def _sources_event(retrieval: Retrieval, claims: Claims, said: str = "") -> str:
 
 
 async def _sse(
-    chunks: AsyncIterator[str], claims: Claims, retrieval: Retrieval, said: str = ""
+    chunks: AsyncIterator[str],
+    claims: Claims,
+    retrieval: Retrieval,
+    said: str = "",
+    timing: dict | None = None,
 ) -> AsyncIterator[str]:
+    first_ms = None
+    answer_ms = None
+    size = 0
     async for text in chunks:
+        if first_ms is None and timing:
+            first_ms = _ms(timing["started"])
+        size += len(text)
         yield f"data: {json.dumps({'text': text}, ensure_ascii=False)}\n\n"
     yield _sources_event(retrieval, claims, said)
     yield "data: [DONE]\n\n"
+    if timing:
+        answer_ms = _ms(timing["started"])
+        _log_timing(
+            stream=True,
+            retrieval_ms=timing["retrieval_ms"],
+            first_token_ms=first_ms,
+            total_ms=answer_ms,
+            clarify_ms=claims.clarify_ms,
+            reasoning_chars=claims.reasoning_chars,
+            answer_chars=size,
+        )
+
+
+def _ms(started: float) -> float:
+    return round((time.perf_counter() - started) * 1000, 1)
+
+
+def _log_timing(**values) -> None:
+    timing_logger.info(" ".join(f"{k}={v}" for k, v in values.items() if v is not None))
 
 
 async def _sse_refusal(text: str, retrieval: Retrieval) -> AsyncIterator[str]:

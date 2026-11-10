@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -15,6 +16,14 @@ class Settings(BaseSettings):
     # Рассуждение модели содержит клинический текст запроса, поэтому отладочная
     # запись выключена по умолчанию и включается явно.
     log_model_reasoning: bool = False
+    # Потолок длины генерации. Ответ врачу укладывается в несколько абзацев;
+    # без потолка редкий разгон модели держит запрос до таймаута.
+    answer_max_tokens: int = 1200
+    clarify_max_tokens: int = 400
+    # Уточнения и противоречия считаются отдельным коротким запросом:
+    # parallel — вместе с ответом, after — после него (если сервер модели
+    # не обрабатывает два запроса одновременно), off — не считаются вовсе.
+    clarify_mode: Literal["parallel", "after", "off"] = "parallel"
     # Корпус документов: файлы вне git, модель эмбеддингов — та же локальная
     # LM Studio, что и генерация.
     corpus_dir: str = "corpus"
