@@ -11,7 +11,7 @@ from app.prompt import SYSTEM_PROMPT
 from app.schemas import AppError, ChatMessage
 from app.settings import Settings
 
-ANSWER_OK = '{"answer": "ok", "sources": []}'
+ANSWER_OK = '{"answer": "ok"}'
 
 
 def _settings(**kwargs) -> Settings:
@@ -236,7 +236,7 @@ def test_stream_yields_answer_text():
             b'data: {"id":"1","object":"chat.completion.chunk",'
             b'"choices":[{"index":0,"delta":{"content":"ok"}}]}\n\n'
             b'data: {"id":"1","object":"chat.completion.chunk",'
-            b'"choices":[{"index":0,"delta":{"content":"\\", \\"sources\\": []}"}}]}\n\n'
+            b'"choices":[{"index":0,"delta":{"content":"\\"}"}}]}\n\n'
             b"data: [DONE]\n\n"
         )
         return httpx.Response(200, content=body)
@@ -270,11 +270,16 @@ def test_chat_module_has_no_optimizer_or_agents():
 # `base_url`, но не то, как выглядит тело запроса.
 
 
-def _capture_request(content: str = ANSWER_OK) -> dict:
+def _capture_request(content: str = ANSWER_OK, program: str = "assistant_answer") -> dict:
+    """Тело запроса нужной программы: ответ и уточнения уходят разными
+    запросами, и различаются они именем схемы."""
     captured: dict = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
-        captured["body"] = json.loads(request.content)
+        body = json.loads(request.content)
+        captured.setdefault("bodies", []).append(body)
+        if body["response_format"]["json_schema"]["name"] == program:
+            captured["body"] = body
         return httpx.Response(200, json=_completion_body(content))
 
     async def run():
@@ -298,14 +303,13 @@ def test_outgoing_request_carries_answer_schema():
     assert response_format is not None, "схема ответа не отправлена"
     assert response_format["type"] == "json_schema"
     schema = response_format["json_schema"]["schema"]
-    assert schema["properties"]["answer"] == {"type": "string"}
-    assert schema["properties"]["sources"] == {"type": "array", "items": {"type": "string"}}
-    assert schema["required"] == ["answer", "sources", "questions", "conflicts"]
+    assert schema["properties"] == {"answer": {"type": "string"}}
+    assert schema["required"] == ["answer"]
 
 
 def test_question_schema_demands_a_fragment_reference():
     """Схема не позволяет вернуть вопрос без фрагмента: сверять было бы нечего."""
-    schema = _capture_request()["body"]["response_format"]["json_schema"]["schema"]
+    schema = _capture_request(program="assistant_clarify")["body"]["response_format"]["json_schema"]["schema"]
     item = schema["properties"]["questions"]["items"]
     assert item["required"] == ["question", "source"]
     assert item["additionalProperties"] is False
