@@ -89,13 +89,32 @@ if [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
   kill "$(cat "$PID_FILE")" || true
   sleep 1
 fi
+port_free() {
+  python3 -c 'import socket,sys; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(("127.0.0.1", int(sys.argv[1])))' "$1" 2>/dev/null
+}
+# Порт может быть занят другой программой: тогда берём следующий свободный,
+# иначе на проверку ответила бы чужая служба, а не наш сервер.
+if ! port_free "$PORT"; then
+  BUSY="$PORT"
+  for candidate in $(seq $((PORT + 1)) $((PORT + 20))); do
+    if port_free "$candidate"; then PORT="$candidate"; break; fi
+  done
+  [[ "$PORT" != "$BUSY" ]] || fail "Порты $BUSY–$((BUSY + 20)) заняты. Задайте свободный: APP_PORT=<порт> ./tools/setup_demo.sh"
+  echo "Порт $BUSY занят другой программой — запускаю на $PORT."
+fi
 nohup uv run uvicorn app.main:app --host 127.0.0.1 --port "$PORT" >"$LOG_FILE" 2>&1 &
 echo $! >"$PID_FILE"
-for _ in $(seq 1 30); do
-  curl -fsS -m 2 "http://127.0.0.1:$PORT/health" >/dev/null 2>&1 && break
+healthy() { curl -fsS -m 2 "http://127.0.0.1:$PORT/health" 2>/dev/null | grep -q '"ok"'; }
+for _ in $(seq 1 60); do
+  healthy && break
+  kill -0 "$(cat "$PID_FILE")" 2>/dev/null || break  # процесс уже упал — ждать нечего
   sleep 1
 done
-curl -fsS "http://127.0.0.1:$PORT/health" >/dev/null || fail "Сервер не поднялся, смотрите $LOG_FILE"
+if ! healthy; then
+  echo "Последние строки $LOG_FILE:"; tail -n 20 "$LOG_FILE" || true
+  fail "Сервер не поднялся, полный журнал — $LOG_FILE"
+fi
+echo "Сервер слушает 127.0.0.1:$PORT"
 READY="$(curl -s "http://127.0.0.1:$PORT/ready" || true)"
 echo "Готовность: $READY"
 
@@ -109,4 +128,4 @@ else
   say "Демо открыто на этой машине: http://127.0.0.1:$PORT/ui (Tailscale не найден)"
 fi
 echo "Журнал сервера: $LOG_FILE · остановить: ./tools/setup_demo.sh stop"
-echo "Замер: make bench-retrieval && make bench ARGS=\"--label parallel\""
+echo "Замер: make bench-retrieval && make bench BENCH_URL=http://127.0.0.1:$PORT ARGS=\"--label parallel\""
