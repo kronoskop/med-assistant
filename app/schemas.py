@@ -1,5 +1,6 @@
 from typing import Literal
 
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -89,3 +90,10 @@ class ChatResponse(BaseModel):
     support: list[SupportDocument] = Field(default_factory=list)
     questions: list[Clarification] = Field(default_factory=list)
     conflicts: list[Conflict] = Field(default_factory=list)
+
+
+class UTF8JSONResponse(JSONResponse):
+    """JSON с явной кодировкой: Safari без неё показывает кириллицу в ошибках
+    кракозябрами."""
+
+    media_type = "application/json; charset=utf-8"

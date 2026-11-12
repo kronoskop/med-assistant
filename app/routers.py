@@ -20,7 +20,7 @@ from app.answer import (
 from app.corpus.service import Grounding, Retrieval, Retriever, get_retriever, render_fragments
 from app.llm import Claims, LLMClient, ensure_structured_output, get_llm
 from app.prompt import DISCLAIMER
-from app.schemas import AppError, ChatMessage, ChatRequest, ChatResponse
+from app.schemas import UTF8JSONResponse, AppError, ChatMessage, ChatRequest, ChatResponse
 
 router = APIRouter()
 
@@ -40,7 +40,7 @@ async def ready(llm: LLMClient = Depends(get_llm)):
         await llm.ping()
         await ensure_structured_output(llm)
     except AppError as exc:
-        return JSONResponse(
+        return UTF8JSONResponse(
             status_code=503,
             content={
                 "status": "not_ready",
