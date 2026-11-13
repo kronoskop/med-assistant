@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.answer import (
     MarkerRewriter,
+    RepeatGuard,
     confirmed_conflicts,
     confirmed_questions,
     confirmed_sources,
@@ -149,12 +150,17 @@ def _settle(text: str, retrieval: Retrieval, claimed):
 
 
 def _sources_event(
-    retrieval: Retrieval, claims: Claims, said: str = "", attribution: str = "model"
+    retrieval: Retrieval,
+    claims: Claims,
+    said: str = "",
+    attribution: str = "model",
+    attribution_score: float | None = None,
 ) -> str:
     sources, grounded, status = _settle("", retrieval, claims.source_ids)
     payload = {
         "grounded": grounded,
         "attribution": attribution,
+        "attribution_score": attribution_score,
         "grounding": status,
         "sources": [s.model_dump() for s in sources],
         "support": [d.model_dump() for d in support_documents(retrieval)],
@@ -177,28 +183,41 @@ async def _sse(
     size = 0
     # Модель ссылается на номера фрагментов; врачу и проверке уходят идентификаторы.
     rewriter = MarkerRewriter(retrieval.hits)
+    guard = RepeatGuard()
     shown: list[str] = []
-    async for raw in chunks:
-        text = rewriter.feed(raw)
-        if not text:
-            continue
-        if first_ms is None and timing:
-            first_ms = _ms(timing["started"])
-        size += len(text)
-        shown.append(text)
-        yield f"data: {json.dumps({'text': text}, ensure_ascii=False)}\n\n"
-    tail = rewriter.flush()
-    if tail:
-        shown.append(tail)
-        yield f"data: {json.dumps({'text': tail}, ensure_ascii=False)}\n\n"
-    answer = "".join(shown)
-    claims.source_ids[:0] = [i for i in cited_ids(answer) if i not in claims.source_ids]
-    attribution, attribution_best = "model", None
-    if retriever is not None and not confirmed_sources(claims.source_ids, retrieval.hits):
-        found, attribution_best = await _attribute(retriever, answer, retrieval)
-        claims.source_ids.extend(found)
-        attribution = "similarity"
-    yield _sources_event(retrieval, claims, said, attribution)
+    try:
+        async for raw in chunks:
+            text = rewriter.feed(raw)
+            if not text:
+                continue
+            if first_ms is None and timing:
+                first_ms = _ms(timing["started"])
+            size += len(text)
+            shown.append(text)
+            yield f"data: {json.dumps({'text': text}, ensure_ascii=False)}\n\n"
+            if guard.repeated("".join(shown)):
+                # Модель пошла по кругу: дальше будет тот же абзац до потолка длины.
+                await chunks.aclose()
+                break
+        tail = rewriter.flush()
+        if tail:
+            shown.append(tail)
+            yield f"data: {json.dumps({'text': tail}, ensure_ascii=False)}\n\n"
+        answer = "".join(shown)
+        claims.source_ids[:0] = [i for i in cited_ids(answer) if i not in claims.source_ids]
+        attribution, attribution_best = "model", None
+        if retriever is not None and not confirmed_sources(claims.source_ids, retrieval.hits):
+            found, attribution_best = await _attribute(retriever, answer, retrieval)
+            claims.source_ids.extend(found)
+            attribution = "similarity"
+    except Exception as exc:
+        # Обрыв посреди ответа: врач видит «ответ не завершён» (нет [DONE]), а в
+        # журнале остаётся причина — код ошибки, без текста.
+        code = exc.code if isinstance(exc, AppError) else type(exc).__name__
+        timing_logger.warning("stream_failed code=%s after_chars=%s", code, size)
+        yield f"data: {json.dumps({'error': code})}\n\n"
+        return
+    yield _sources_event(retrieval, claims, said, attribution, attribution_best)
     yield "data: [DONE]\n\n"
     if timing:
         answer_ms = _ms(timing["started"])

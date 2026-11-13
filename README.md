@@ -33,7 +33,7 @@ cp .env.example .env
 | `LOG_MODEL_REASONING` | `false` |
 | `EMBEDDING_BACKEND` | `local` |
 | `LOCAL_EMBEDDING_MODEL` | `intfloat/multilingual-e5-small` |
-| `ANSWER_MAX_TOKENS` | `1200` |
+| `ANSWER_MAX_TOKENS` | `600` |
 | `CLARIFY_MAX_TOKENS` | `400` |
 | `CLARIFY_MODE` | `parallel` |
 

@@ -183,3 +183,12 @@ def test_timing_log_carries_no_clinical_text(client, fake_llm, caplog):
     records = [r.getMessage() for r in caplog.records if r.name == "app.timing"]
     assert records and "retrieval_ms=" in records[0] and "first_token_ms=" in records[0]
     assert all("СЕКРЕТНЫЙ_СЛУЧАЙ" not in r for r in records)
+
+
+def test_repeat_penalty_is_sent_and_can_be_switched_off():
+    seen: list[dict] = []
+    _complete(seen)
+    assert all(b["repeat_penalty"] == 1.1 for b in seen)
+    seen.clear()
+    _complete(seen, repeat_penalty=1.0)
+    assert all("repeat_penalty" not in b for b in seen)

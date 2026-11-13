@@ -19,7 +19,7 @@ from app.corpus import embed
 from app.corpus.service import attribute, get_retriever
 from app.llm import LLMClient, get_llm
 from app.main import app
-from app.schemas import ChatMessage
+from app.schemas import AppError, ChatMessage
 from app.settings import Settings
 from tests.conftest import FakeLLM, FakeRetriever, grounded, make_hit
 from tests.test_llm import _completion_body, _transport
@@ -211,3 +211,57 @@ def test_attribute_links_close_sentences_only(monkeypatch):
         [],
         0.0,
     )
+
+
+def test_repeat_guard_stops_a_looping_answer(client):
+    loop = "Вскрытие показано при признаках острого гнойного воспаления [1]. "
+    llm = FakeLLM(
+        stream_parts=[
+            loop,
+            "Другое предложение про лечение железы [2]. ",
+            loop,
+            loop,
+            loop,
+        ]
+    )
+    _use(llm, FakeRetriever(grounded(*HITS)))
+    response = client.post(
+        "/api/v1/chat",
+        json={"stream": True, "messages": [{"role": "user", "content": "?"}]},
+    )
+    frames = _frames(response)
+    text = "".join(f["text"] for f in frames if "text" in f)
+    assert text.count("Вскрытие показано") == 2, "поток остановлен на первом повторе"
+    assert frames[-1]["grounded"] is True
+
+
+def test_failure_mid_stream_leaves_an_error_frame(client, caplog):
+    class Broken(FakeLLM):
+        async def start_chat_stream(
+            self, messages, fragments="", claims=None, language=None
+        ):
+            async def gen():
+                yield "Начало ответа [1]. "
+                raise AppError(502, "llm_error", "Модель вернула пустой ответ")
+
+            return gen()
+
+    _use(Broken(), FakeRetriever(grounded(*HITS)))
+    response = client.post(
+        "/api/v1/chat",
+        json={"stream": True, "messages": [{"role": "user", "content": "?"}]},
+    )
+    assert _frames(response)[-1] == {"error": "llm_error"}
+    assert "[DONE]" not in response.text
+
+
+def test_similarity_score_reaches_the_final_frame(client):
+    _use(
+        FakeLLM(stream_parts=["Без ссылок, но по теме."]),
+        Attributing(grounded(*HITS), ["a:ru:1:0"]),
+    )
+    response = client.post(
+        "/api/v1/chat",
+        json={"stream": True, "messages": [{"role": "user", "content": "?"}]},
+    )
+    assert _frames(response)[-1]["attribution_score"] == 0.91

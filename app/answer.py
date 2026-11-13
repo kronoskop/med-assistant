@@ -246,6 +246,23 @@ class MarkerRewriter:
         return numbered_to_ids(text, self.hits)
 
 
+class RepeatGuard:
+    """Замечает, что ответ пошёл по кругу: законченное предложение длиной от
+    30 знаков слово в слово повторило уже написанное."""
+
+    _END = re.compile(r"(?<=[.!?…])\s+")
+
+    def __init__(self) -> None:
+        self.checked = 0
+
+    def repeated(self, text: str) -> bool:
+        sentences = [_comparable(s) for s in self._END.split(text)[:-1]]  # последнее ещё пишется
+        done = [s for s in sentences if len(s) >= 30]
+        fresh = len(done) > self.checked
+        self.checked = len(done)
+        return fresh and done[-1] in done[:-1]
+
+
 def weave_citations(text: str, hits: tuple[Hit, ...]) -> tuple[str, list[SourceFragment]]:
     """Заменяет идентификаторы в тексте на номера сносок.
 

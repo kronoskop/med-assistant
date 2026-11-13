@@ -73,6 +73,8 @@ PY
 }
 set_env LMSTUDIO_MODEL "$CHAT_MODEL"
 [[ -n "$EMBED_MODEL" ]] && set_env EMBEDDING_MODEL "$EMBED_MODEL"
+# Прежний потолок из старого .env.example: зациклившийся ответ держал сервер минуту.
+grep -q '^ANSWER_MAX_TOKENS=1200$' .env && set_env ANSWER_MAX_TOKENS 600
 echo ".env обновлён."
 
 say "4/6 Зависимости"

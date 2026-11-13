@@ -77,12 +77,15 @@ def chat_once(client: httpx.Client, url: str, question: str) -> dict:
                 text += data["text"]
             elif "sources" in data:
                 final = data
+            elif "error" in data:
+                return {"error": f"stream:{data['error']}", "total_ms": _ms(started), "text": text}
     return {
         "first_token_ms": round((first - started) * 1000) if first else None,
         "total_ms": _ms(started),
         "answer_chars": len(text),
         "grounded": bool(final.get("grounded")),
         "attribution": final.get("attribution"),
+        "attribution_score": final.get("attribution_score"),
         "source_docs": sorted({s["document_id"] for s in final.get("sources", [])}),
         "questions": len(final.get("questions", [])),
         "conflicts": len(final.get("conflicts", [])),
@@ -116,7 +119,7 @@ def run_chat(args) -> list[dict]:
 def _show(item: dict, row: dict, text: str) -> None:
     """Текст ответа и ссылки — для разбора, почему ответ не засчитан."""
     print(
-        f"   ждали {sorted(item['expected_docs'])} · заземлён {row.get('grounded')} ({row.get('attribution')}) · "
+        f"   ждали {sorted(item['expected_docs'])} · заземлён {row.get('grounded')} ({row.get('attribution')} {row.get('attribution_score')}) · "
         f"сноски {row.get('source_docs')} · маркеров в тексте {len(cited_ids(text))}",
         file=sys.stderr,
     )

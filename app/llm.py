@@ -229,6 +229,8 @@ class LMStudioCompatibleClient(OpenAICompatibleClient):
             payload["response_format"] = self._schema
             payload.pop("max_completion_tokens", None)
             payload["max_tokens"] = self._max_tokens
+            if self._settings.repeat_penalty and self._settings.repeat_penalty != 1.0:
+                payload["repeat_penalty"] = self._settings.repeat_penalty  # LM Studio, вне OpenAI
         result = super()._request_json(endpoint, payload, **kwargs)
         if not kwargs.get("stream"):
             reasoning = _reasoning_from_body(result)
