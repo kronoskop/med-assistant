@@ -30,7 +30,7 @@ def test_retrieved_fragments_reach_the_model(client):
     llm = _use(grounded(hit))
     _post(client)
     assert llm.fragments, "фрагменты в модель не передавались"
-    assert hit.fragment.id in llm.fragments[0]
+    assert llm.fragments[0].startswith("[1] "), "модель видит номер фрагмента"
     assert "Кратность наблюдения выше" in llm.fragments[0]
 
 
@@ -164,7 +164,7 @@ def test_retrieval_talks_only_to_the_configured_local_address(monkeypatch):
             pass
 
     monkeypatch.setattr(embed.httpx, "Client", SpyClient)
-    settings = Settings(_env_file=None)
+    settings = Settings(_env_file=None, embedding_backend="lmstudio")
     embed.embed_texts(["секретный клинический текст"], settings)
 
     assert seen, "обращений не было"

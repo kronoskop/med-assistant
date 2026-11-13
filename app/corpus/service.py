@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -54,7 +55,9 @@ def retrieve(question: str, settings: Settings | None = None, *, corpus: Corpus 
     if corpus.is_empty:
         return Retrieval(Grounding.EMPTY_CORPUS)
 
-    from app.corpus.embed import embed_query  # локальный импорт: сеть только когда есть что искать
+    from app.corpus.embed import (
+        embed_query,  # локальный импорт: сеть только когда есть что искать
+    )
 
     vectors = embed_query(question, settings)
     candidates = corpus.search(
@@ -92,12 +95,15 @@ def render_fragments(hits: tuple[Hit, ...]) -> str:
     """Фрагменты в том виде, в каком их видит модель: с идентификатором,
     по которому потом сверяется ссылка.
 
+    Фрагменты пронумерованы: номер модель ставит как ссылку, сервер переводит
+    его обратно в идентификатор (`app.answer.numbered_to_ids`).
+
     Текст таблицы модели не показывается: извлечение расплющивает её в
     неразборчивую строку, и модель переписывает этот мусор в ответ. Вместо
     текста — пометка, что там таблица; врач откроет её по ссылке.
     """
     blocks = []
-    for hit in hits:
+    for number, hit in enumerate(hits, start=1):
         fragment = hit.fragment
         body = (
             "Здесь таблица, её содержимое не приводится. Отвечай по остальным фрагментам; "
@@ -106,9 +112,72 @@ def render_fragments(hits: tuple[Hit, ...]) -> str:
             else fragment.text
         )
         blocks.append(
-            f"[{fragment.id}] {hit.document.title} — {fragment.location}\n{body}"
+            f"[{number}] {hit.document.title} — {fragment.location}\n{body}"
         )
     return "\n\n".join(blocks)
+
+
+_SENTENCE_END = re.compile(r"(?<=[.!?…])\s+")
+_MIN_SENTENCE = 25
+
+
+def attribute(text: str, hits: tuple[Hit, ...], settings: Settings | None = None) -> tuple[list[str], float]:
+    """Запасные сноски, когда модель не поставила ни одной ссылки.
+
+    Каждое предложение ответа сравнивается с отобранными фрагментами прозы
+    (текст таблиц модель не видела); сноской становится ближайший фрагмент,
+    если близость не ниже порога. Возвращает идентификаторы и лучшую близость
+    — по ней подбирают порог. Пустой список — ответ ни на что не опирается.
+    """
+    settings = settings or get_settings()
+    if settings.attribution_min_score <= 0:
+        return [], 0.0
+    sentences = [s.strip() for s in _SENTENCE_END.split(text) if len(s.strip()) >= _MIN_SENTENCE]
+    prose = [hit for hit in hits if not hit.fragment.is_table]
+    if not sentences or not prose:
+        return [], 0.0
+
+    from app.corpus.embed import embed_passages, embed_texts
+
+    claims = embed_texts(sentences, settings, prefix=settings.embedding_query_prefix)
+    passages = embed_passages([hit.fragment.text for hit in prose], settings)
+    scores = claims @ passages.T
+    ids: list[str] = []
+    for row in scores:
+        best = int(row.argmax())
+        fragment_id = prose[best].fragment.id
+        if row[best] >= settings.attribution_min_score and fragment_id not in ids:
+            ids.append(fragment_id)
+    return ids, round(float(scores.max()), 3)
+
+
+_ID_MARKER = re.compile(r"\[([^\[\]]+:[^\[\]]+:\d+:\d+)\]")
+
+
+def citation_support(text: str, hits: tuple[Hit, ...], settings: Settings | None = None) -> float | None:
+    """Насколько предложения со ссылками модели близки к фрагментам, на которые
+    ссылаются: лучшая близость пары «предложение — его фрагмент».
+
+    Ссылка сама по себе не доказывает опору: на посторонний вопрос модель
+    может написать стих и сослаться на протокол. Пока число только
+    записывается — по замеру выберем порог.
+    """
+    settings = settings or get_settings()
+    by_id = {hit.fragment.id: hit for hit in hits if not hit.fragment.is_table}
+    pairs: list[tuple[str, str]] = []
+    for sentence in _SENTENCE_END.split(text):
+        ids = [i for i in _ID_MARKER.findall(sentence) if i in by_id]
+        plain = _ID_MARKER.sub("", sentence).strip()
+        if ids and len(plain) >= _MIN_SENTENCE:
+            pairs.extend((plain, by_id[i].fragment.text) for i in ids)
+    if not pairs:
+        return None
+
+    from app.corpus.embed import embed_passages, embed_texts
+
+    claims = embed_texts([c for c, _ in pairs], settings, prefix=settings.embedding_query_prefix)
+    passages = embed_passages([f for _, f in pairs], settings)
+    return round(float((claims * passages).sum(axis=1).max()), 3)
 
 
 class Retriever:
@@ -116,6 +185,12 @@ class Retriever:
 
     def __call__(self, question: str) -> Retrieval:
         return retrieve(question)
+
+    def attribute(self, text: str, hits: tuple[Hit, ...]) -> tuple[list[str], float]:
+        return attribute(text, hits)
+
+    def citation_support(self, text: str, hits: tuple[Hit, ...]) -> float | None:
+        return citation_support(text, hits)
 
 
 def get_retriever() -> Retriever:

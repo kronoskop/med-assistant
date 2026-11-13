@@ -41,3 +41,16 @@ def test_ui_never_reaches_the_model(client, fake_llm):
     client.get("/ui")
     client.get("/ui/app.js")
     assert fake_llm.calls == []
+
+
+def test_root_leads_to_the_interface(client):
+    response = client.get("/", follow_redirects=False)
+    assert response.status_code in (302, 307)
+    assert response.headers["location"] == "/ui"
+
+
+def test_json_errors_declare_utf8(client):
+    response = client.get("/no-such-path")
+    assert response.status_code == 404
+    assert "charset=utf-8" in response.headers["content-type"]
+    assert response.json()["message"] == "Не найдено"

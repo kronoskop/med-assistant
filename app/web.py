@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 
 router = APIRouter()
 
@@ -16,6 +16,12 @@ ASSETS: dict[str, str] = {
     "topics.js": "text/javascript; charset=utf-8",
     "styles.css": "text/css; charset=utf-8",
 }
+
+
+@router.get("/", include_in_schema=False)
+async def root() -> RedirectResponse:
+    """Корень ведёт в интерфейс: врач открывает адрес сервиса, а не `/ui`."""
+    return RedirectResponse("/ui", status_code=307)
 
 
 @router.get("/ui", include_in_schema=False)
