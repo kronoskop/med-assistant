@@ -54,7 +54,35 @@ def create_app() -> FastAPI:
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     await _check_model_on_startup(app)
+    await _warm_up_embeddings(app)
     yield
+
+
+async def _warm_up_embeddings(app: FastAPI) -> None:
+    """Модель эмбеддингов грузится при старте, а не на первом вопросе врача,
+    и сразу проверяется: сломанная модель видна администратору в журнале."""
+    import asyncio
+
+    from app.corpus.embed import check_quality
+    from app.corpus.service import _corpus
+    from app.settings import get_settings
+
+    if get_retriever_overridden(app):
+        return
+    settings = get_settings()
+    try:
+        if (await asyncio.to_thread(_corpus, settings)).is_empty:
+            return
+        related, unrelated = await asyncio.to_thread(check_quality, settings)
+        startup_logger.info("эмбеддинги готовы: по теме %.3f, чужая %.3f", related, unrelated)
+    except AppError as exc:
+        startup_logger.error("%s", exc.message)
+
+
+def get_retriever_overridden(app: FastAPI) -> bool:
+    from app.corpus.service import get_retriever
+
+    return get_retriever in app.dependency_overrides
 
 
 async def _check_model_on_startup(app: FastAPI) -> None:

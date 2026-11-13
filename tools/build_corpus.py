@@ -17,12 +17,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from app.corpus.embed import embed_passages  # noqa: E402
+from app.corpus.embed import check_quality, embed_passages, model_id  # noqa: E402
 from app.corpus.index import build, save  # noqa: E402
 from app.corpus.manifest import load  # noqa: E402
 import httpx  # noqa: E402
 
 from app.corpus.store import MANIFEST_PATH, fetch_edition  # noqa: E402
+from app.schemas import AppError  # noqa: E402
 from app.settings import get_settings  # noqa: E402
 
 
@@ -60,9 +61,18 @@ def main() -> int:
     fragments, _ = build(settings, root=root, workers=workers)
     print(f"  фрагментов: {len(fragments)}")
 
-    print("Считаю эмбеддинги в LM Studio…", flush=True)
+    print(f"Проверяю модель эмбеддингов {model_id(settings)}…", flush=True)
+    try:
+        related, unrelated = check_quality(settings)
+    except AppError as exc:
+        print(f"Ошибка: {exc.message}")
+        print("Индекс не собран: поиск по такой модели был бы случайным.")
+        return 1
+    print(f"  фраза по теме {related:.3f}, чужая {unrelated:.3f} — модель различает смысл")
+
+    print("Считаю эмбеддинги фрагментов…", flush=True)
     vectors = embed_passages([f.text for f in fragments], settings)
-    save(fragments, vectors, root)
+    save(fragments, vectors, root, embedding=model_id(settings))
     print(f"Готово за {time.perf_counter() - started:.0f} с. Индекс: {root}")
     if bad or failed:
         print("Внимание: часть документов пропущена или изменилась на сайте — ответы по ним будут неполными.")

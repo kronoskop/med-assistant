@@ -164,7 +164,7 @@ def test_retrieval_talks_only_to_the_configured_local_address(monkeypatch):
             pass
 
     monkeypatch.setattr(embed.httpx, "Client", SpyClient)
-    settings = Settings(_env_file=None)
+    settings = Settings(_env_file=None, embedding_backend="lmstudio")
     embed.embed_texts(["секретный клинический текст"], settings)
 
     assert seen, "обращений не было"

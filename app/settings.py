@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     # Корпус документов: файлы вне git, модель эмбеддингов — та же локальная
     # LM Studio, что и генерация.
     corpus_dir: str = "corpus"
+    # Где считаются эмбеддинги. local — в процессе сервиса исходной моделью
+    # с Hugging Face (скачивается один раз, дальше работает без сети); lmstudio —
+    # через LM Studio. GGUF-сборка e5-small в LM Studio оказалась сломанной:
+    # посторонней фразе она давала близость выше, чем фразе по теме.
+    embedding_backend: Literal["local", "lmstudio"] = "local"
+    local_embedding_model: str = "intfloat/multilingual-e5-small"
     embedding_model: str = "text-embedding-multilingual-e5-small"
     # Модели семейства E5 обучены на префиксах и без них заметно теряют
     # в качестве: вопрос помечается query, фрагмент — passage.

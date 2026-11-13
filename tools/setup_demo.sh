@@ -4,8 +4,7 @@
 #   ./tools/setup_demo.sh          # всё по порядку; повторный запуск быстрый
 #   ./tools/setup_demo.sh stop     # остановить сервер демо
 #
-# Что нужно заранее: LM Studio с загруженными MedGemma и
-# text-embedding-multilingual-e5-small. Tailscale — по желанию: без него
+# Что нужно заранее: LM Studio с загруженной MedGemma. Tailscale — по желанию: без него
 # интерфейс доступен только на этой машине.
 set -euo pipefail
 
@@ -54,9 +53,8 @@ echo "Модели в LM Studio:"; echo "$MODELS" | sed 's/^/  /'
 CHAT_MODEL="${LMSTUDIO_MODEL:-$(echo "$MODELS" | grep -iE 'med-?gemma' | head -1 || true)}"
 EMBED_MODEL="${EMBEDDING_MODEL:-$(echo "$MODELS" | grep -i 'e5-small' | head -1 || true)}"
 [[ -n "$CHAT_MODEL" ]] || fail "MedGemma не найдена в LM Studio. Скачайте её в разделе Discover (лучше MLX-сборку, если есть)."
-[[ -n "$EMBED_MODEL" ]] || fail "Модель эмбеддингов не найдена. Скачайте text-embedding-multilingual-e5-small в LM Studio."
 echo "Чат: $CHAT_MODEL"
-echo "Эмбеддинги: $EMBED_MODEL"
+echo "Эмбеддинги: внутри сервиса (intfloat/multilingual-e5-small, скачается при первой сборке)"
 
 say "3/6 Настройки"
 [[ -f .env ]] || cp .env.example .env
@@ -74,7 +72,7 @@ PY
   fi
 }
 set_env LMSTUDIO_MODEL "$CHAT_MODEL"
-set_env EMBEDDING_MODEL "$EMBED_MODEL"
+[[ -n "$EMBED_MODEL" ]] && set_env EMBEDDING_MODEL "$EMBED_MODEL"
 echo ".env обновлён."
 
 say "4/6 Зависимости"

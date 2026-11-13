@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -27,6 +28,8 @@ from app.corpus.extract import read_pages
 from app.corpus.manifest import Document, EvidenceLevel
 from app.corpus.store import MANIFEST_PATH, edition_path
 from app.settings import Settings
+
+logger = logging.getLogger("app.corpus")
 
 INDEX_FILE = "index.json"
 VECTORS_FILE = "vectors.npy"
@@ -164,12 +167,12 @@ def _write_cache(root: Path, signature: str, fragments: list[Fragment]) -> None:
     )
 
 
-def save(fragments: list[Fragment], vectors: np.ndarray, root: Path) -> None:
+def save(fragments: list[Fragment], vectors: np.ndarray, root: Path, embedding: str | None = None) -> None:
     root.mkdir(parents=True, exist_ok=True)
-    (root / INDEX_FILE).write_text(
-        json.dumps({"fragments": [asdict(f) for f in fragments]}, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    payload: dict = {"fragments": [asdict(f) for f in fragments]}
+    if embedding:
+        payload["embedding"] = embedding
+    (root / INDEX_FILE).write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     np.save(root / VECTORS_FILE, vectors)
 
 
@@ -180,5 +183,18 @@ def load(settings: Settings, *, root: Path | None = None) -> Corpus:
     if not index_path.exists() or not vectors_path.exists():
         return Corpus(documents, [], np.zeros((0, 0), dtype=np.float32))
     raw = json.loads(index_path.read_text(encoding="utf-8"))
+    from app.corpus.embed import model_id
+
+    built_with, expected = raw.get("embedding"), model_id(settings)
+    if built_with != expected:
+        # Векторы другой модели несравнимы с вопросом: поиск по ним случаен.
+        # Лучше честный отказ «документы недоступны», чем ответ не по теме.
+        logger.error(
+            "индекс собран моделью %s, а вопросы считаются %s: пересоберите индекс "
+            "(uv run python tools/build_corpus.py)",
+            built_with or "неизвестной",
+            expected,
+        )
+        return Corpus(documents, [], np.zeros((0, 0), dtype=np.float32))
     fragments = [Fragment(**item) for item in raw["fragments"]]
     return Corpus(documents, fragments, np.load(vectors_path))
