@@ -322,6 +322,7 @@ def _make_clarify_program():
 
 
 clarify_logger = logging.getLogger("app.clarify")
+answer_logger = logging.getLogger("app.answer")
 
 
 class LLMClient:
@@ -470,6 +471,12 @@ class LLMClient:
             try:
                 while True:
                     kind, payload = pending.pop(0) if pending else await queue.get()
+                    if kind == "error" and reader.emitted:
+                        # Ответ уже пишется, а программа упала в конце — обычно
+                        # JSON оборван потолком длины. Врач получает написанное
+                        # со сносками, а не обрыв соединения.
+                        answer_logger.warning("ответ оборван: %s", type(payload).__name__)
+                        kind = "done"
                     if kind == "error":
                         raise _map_ax_error(payload) from payload
                     if kind == "done":

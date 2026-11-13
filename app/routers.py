@@ -214,7 +214,8 @@ async def _sse(
         # Обрыв посреди ответа: врач видит «ответ не завершён» (нет [DONE]), а в
         # журнале остаётся причина — код ошибки, без текста.
         code = exc.code if isinstance(exc, AppError) else type(exc).__name__
-        timing_logger.warning("stream_failed code=%s after_chars=%s", code, size)
+        cause = type(exc.__cause__ or exc).__name__
+        timing_logger.warning("stream_failed code=%s cause=%s after_chars=%s", code, cause, size)
         yield f"data: {json.dumps({'error': code})}\n\n"
         return
     yield _sources_event(retrieval, claims, said, attribution, attribution_best)
