@@ -112,3 +112,19 @@ def test_parallel_parsing_gives_the_same_fragments(tmp_path):
     assert serial, "тестовые PDF не дали фрагментов"
     assert [f.id for f in parallel] == [f.id for f in serial]
     assert {f.document_id for f in serial} == {d.id for d in documents}
+
+
+def test_vectors_are_reused_only_for_the_same_fragments_and_model(tmp_path):
+    import numpy as np
+
+    from app.corpus.chunks import Fragment
+    from app.corpus.index import index_is_current, save, vectors_fingerprint
+
+    frags = [Fragment("d:ru:1:0", "d", "ru", 1, 0, None, "текст")]
+    mark = vectors_fingerprint(frags, "local:e5", "passage: ")
+    assert not index_is_current(tmp_path, mark)
+    save(frags, np.zeros((1, 3), dtype=np.float32), tmp_path, embedding="local:e5", fingerprint=mark)
+    assert index_is_current(tmp_path, mark)
+    assert not index_is_current(tmp_path, vectors_fingerprint(frags, "local:other", "passage: "))
+    changed = [Fragment("d:ru:1:0", "d", "ru", 1, 0, None, "другой текст")]
+    assert not index_is_current(tmp_path, vectors_fingerprint(changed, "local:e5", "passage: "))

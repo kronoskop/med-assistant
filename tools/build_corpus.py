@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from app.corpus.embed import check_quality, embed_passages, model_id  # noqa: E402
-from app.corpus.index import build, save  # noqa: E402
+from app.corpus.index import build, index_is_current, save, vectors_fingerprint  # noqa: E402
 from app.corpus.manifest import load  # noqa: E402
 import httpx  # noqa: E402
 
@@ -70,9 +70,13 @@ def main() -> int:
         return 1
     print(f"  фраза по теме {related:.3f}, чужая {unrelated:.3f} — модель различает смысл")
 
-    print("Считаю эмбеддинги фрагментов…", flush=True)
-    vectors = embed_passages([f.text for f in fragments], settings)
-    save(fragments, vectors, root, embedding=model_id(settings))
+    fingerprint = vectors_fingerprint(fragments, model_id(settings), settings.embedding_passage_prefix)
+    if index_is_current(root, fingerprint):
+        print("Эмбеддинги уже посчитаны для этих фрагментов и этой модели — пропускаю.")
+    else:
+        print("Считаю эмбеддинги фрагментов…", flush=True)
+        vectors = embed_passages([f.text for f in fragments], settings)
+        save(fragments, vectors, root, embedding=model_id(settings), fingerprint=fingerprint)
     print(f"Готово за {time.perf_counter() - started:.0f} с. Индекс: {root}")
     if bad or failed:
         print("Внимание: часть документов пропущена или изменилась на сайте — ответы по ним будут неполными.")

@@ -167,11 +167,39 @@ def _write_cache(root: Path, signature: str, fragments: list[Fragment]) -> None:
     )
 
 
-def save(fragments: list[Fragment], vectors: np.ndarray, root: Path, embedding: str | None = None) -> None:
+def vectors_fingerprint(fragments: list[Fragment], embedding: str, prefix: str = "") -> str:
+    """Отпечаток того, из чего посчитаны векторы: тексты фрагментов, модель и
+    префикс. Совпал — пересчитывать нечего."""
+    digest = hashlib.sha256(f"{embedding}|{prefix}".encode())
+    for fragment in fragments:
+        digest.update(b"\0" + fragment.id.encode() + b"\0" + fragment.text.encode())
+    return digest.hexdigest()
+
+
+def index_is_current(root: Path, fingerprint: str) -> bool:
+    index_path, vectors_path = root / INDEX_FILE, root / VECTORS_FILE
+    if not index_path.exists() or not vectors_path.exists():
+        return False
+    try:
+        raw = json.loads(index_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return False
+    return raw.get("fingerprint") == fingerprint
+
+
+def save(
+    fragments: list[Fragment],
+    vectors: np.ndarray,
+    root: Path,
+    embedding: str | None = None,
+    fingerprint: str | None = None,
+) -> None:
     root.mkdir(parents=True, exist_ok=True)
     payload: dict = {"fragments": [asdict(f) for f in fragments]}
     if embedding:
         payload["embedding"] = embedding
+    if fingerprint:
+        payload["fingerprint"] = fingerprint
     (root / INDEX_FILE).write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     np.save(root / VECTORS_FILE, vectors)
 
