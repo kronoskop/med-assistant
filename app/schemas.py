@@ -90,6 +90,9 @@ class ChatResponse(BaseModel):
     support: list[SupportDocument] = Field(default_factory=list)
     questions: list[Clarification] = Field(default_factory=list)
     conflicts: list[Conflict] = Field(default_factory=list)
+    # Откуда сноски: model — модель сослалась сама; similarity — модель ссылок
+    # не поставила, и сервер сопоставил предложения ответа с фрагментами.
+    attribution: str = "model"
 
 
 class UTF8JSONResponse(JSONResponse):

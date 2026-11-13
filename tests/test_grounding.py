@@ -30,7 +30,7 @@ def test_retrieved_fragments_reach_the_model(client):
     llm = _use(grounded(hit))
     _post(client)
     assert llm.fragments, "фрагменты в модель не передавались"
-    assert hit.fragment.id in llm.fragments[0]
+    assert llm.fragments[0].startswith("[1] "), "модель видит номер фрагмента"
     assert "Кратность наблюдения выше" in llm.fragments[0]
 
 

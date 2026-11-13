@@ -29,17 +29,30 @@ def refusal_text(status: Grounding) -> str:
     return REFUSAL_EMPTY_CORPUS if status is Grounding.EMPTY_CORPUS else REFUSAL_NO_MATCH
 
 
+def resolve_ref(raw: object, hits: tuple[Hit, ...]) -> Hit | None:
+    """Фрагмент по ссылке модели: номеру из списка («2», «[2]») или идентификатору.
+
+    Модели показываются номера: длинные идентификаторы вида
+    `mz-777:ru:12:3` маленькая модель не переписывает и просто опускает.
+    Номер вне списка — ссылка в никуда, её нет.
+    """
+    ref = str(raw or "").strip().strip("[]").strip()
+    if ref.isdigit():
+        index = int(ref) - 1
+        return hits[index] if 0 <= index < len(hits) else None
+    return next((hit for hit in hits if hit.fragment.id == ref), None)
+
+
 def confirmed_sources(claimed: tuple[str, ...] | list[str], hits: tuple[Hit, ...]) -> list[SourceFragment]:
     """Оставляет только те ссылки, что указывают на реально отобранные фрагменты.
 
     Модель охотно ссылается на правдоподобные, но не существовавшие фрагменты;
     без этой сверки продукт получил бы фальшивую трассируемость.
     """
-    by_id = {hit.fragment.id: hit for hit in hits}
     sources: list[SourceFragment] = []
     seen: set[str] = set()
     for raw in claimed:
-        hit = by_id.get(str(raw).strip())
+        hit = resolve_ref(raw, hits)
         if hit is None or hit.fragment.id in seen:
             continue
         seen.add(hit.fragment.id)
@@ -69,14 +82,13 @@ def confirmed_questions(claimed, hits: tuple[Hit, ...]) -> list[Clarification]:
     под ним оно превращается в догадку модели о том, что бывает важно, и
     наследует все её ошибки.
     """
-    by_id = {hit.fragment.id: hit for hit in hits}
     out: list[Clarification] = []
     seen: set[str] = set()
     for item in claimed:
         if not isinstance(item, dict):
             continue
         question = str(item.get("question") or "").strip()
-        hit = by_id.get(str(item.get("source") or "").strip())
+        hit = resolve_ref(item.get("source"), hits)
         if not question or hit is None or question.casefold() in seen:
             continue
         seen.add(question.casefold())
@@ -152,6 +164,22 @@ def support_documents(retrieval: Retrieval) -> list[SupportDocument]:
     return out
 
 
+_UZ_LATIN = re.compile(r"[og][ʻʼ‘’'`]|\b(va|uchun|bilan|qanday|qachon|nima|kerak|boʻl|bo'l|homilador|davolash|bemor)\b", re.IGNORECASE)
+
+
+def question_language(text: str) -> str:
+    """Язык вопроса врача: ru, uz (латиница) или en — чтобы прямо сказать
+    модели, на каком языке отвечать. Кириллица считается русской: узбекские
+    вопросы в демо пишутся латиницей."""
+    letters = [c for c in text if c.isalpha()]
+    if not letters:
+        return "ru"
+    cyrillic = sum("а" <= c.lower() <= "я" or c in "ёЁ" for c in letters)
+    if cyrillic * 2 >= len(letters):
+        return "ru"
+    return "uz" if _UZ_LATIN.search(text) else "en"
+
+
 def last_question(messages) -> str:
     for message in reversed(messages):
         if message.role == "user":
@@ -177,6 +205,45 @@ def normalize_answer(text: str) -> str:
     out = re.sub(r"^\s*#+\s*", "", out, flags=re.M)       # заголовки
     out = re.sub(r"\n{3,}", "\n\n", out)
     return out.strip()
+
+
+# Номера фрагментов в тексте модели: [2], [1, 3], [1; 3].
+_NUMBERED = re.compile(r"\[\s*(\d{1,2}(?:\s*[,;]\s*\d{1,2})*)\s*\]")
+# Сколько символов после «[» ждать закрывающую скобку, прежде чем отпустить текст.
+_PENDING_LIMIT = 16
+
+
+def numbered_to_ids(text: str, hits: tuple[Hit, ...]) -> str:
+    """Переводит номера фрагментов в идентификаторы: дальше по стеку — и в
+    интерфейсе — ссылка всегда идентификатор. Номер вне списка вычёркивается."""
+
+    def replace(match: re.Match[str]) -> str:
+        found = [resolve_ref(n, hits) for n in re.split(r"[,;]", match.group(1))]
+        return "".join(f"[{hit.fragment.id}]" for hit in found if hit is not None)
+
+    return _NUMBERED.sub(replace, text)
+
+
+class MarkerRewriter:
+    """`numbered_to_ids` для потока: номер может разрезаться между кусками,
+    поэтому хвост с незакрытой «[» придерживается до следующего куска."""
+
+    def __init__(self, hits: tuple[Hit, ...]) -> None:
+        self.hits = hits
+        self.pending = ""
+
+    def feed(self, chunk: str) -> str:
+        text = self.pending + chunk
+        cut = text.rfind("[")
+        if cut >= 0 and "]" not in text[cut:] and len(text) - cut <= _PENDING_LIMIT:
+            text, self.pending = text[:cut], text[cut:]
+        else:
+            self.pending = ""
+        return numbered_to_ids(text, self.hits)
+
+    def flush(self) -> str:
+        text, self.pending = self.pending, ""
+        return numbered_to_ids(text, self.hits)
 
 
 def weave_citations(text: str, hits: tuple[Hit, ...]) -> tuple[str, list[SourceFragment]]:

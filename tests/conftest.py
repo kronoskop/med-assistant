@@ -33,7 +33,7 @@ class FakeLLM:
         self.stream_parts = stream_parts or ["Привет", ", коллега"]
         self.calls: list[list[ChatMessage]] = []
 
-    async def complete(self, messages: list[ChatMessage], fragments: str = "") -> Answer:
+    async def complete(self, messages: list[ChatMessage], fragments: str = "", language=None) -> Answer:
         if self.connect_error:
             raise AppError(503, "llm_unavailable", "LM Studio недоступен")
         self.calls.append(list(messages))
@@ -45,7 +45,7 @@ class FakeLLM:
             tuple(self.claim_conflicts),
         )
 
-    async def start_chat_stream(self, messages: list[ChatMessage], fragments: str = "", claims=None):
+    async def start_chat_stream(self, messages: list[ChatMessage], fragments: str = "", claims=None, language=None):
         if self.connect_error:
             raise AppError(503, "llm_unavailable", "LM Studio недоступен")
         self.calls.append(list(messages))
