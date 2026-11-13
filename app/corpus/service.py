@@ -151,6 +151,35 @@ def attribute(text: str, hits: tuple[Hit, ...], settings: Settings | None = None
     return ids, round(float(scores.max()), 3)
 
 
+_ID_MARKER = re.compile(r"\[([^\[\]]+:[^\[\]]+:\d+:\d+)\]")
+
+
+def citation_support(text: str, hits: tuple[Hit, ...], settings: Settings | None = None) -> float | None:
+    """Насколько предложения со ссылками модели близки к фрагментам, на которые
+    ссылаются: лучшая близость пары «предложение — его фрагмент».
+
+    Ссылка сама по себе не доказывает опору: на посторонний вопрос модель
+    может написать стих и сослаться на протокол. Пока число только
+    записывается — по замеру выберем порог.
+    """
+    settings = settings or get_settings()
+    by_id = {hit.fragment.id: hit for hit in hits if not hit.fragment.is_table}
+    pairs: list[tuple[str, str]] = []
+    for sentence in _SENTENCE_END.split(text):
+        ids = [i for i in _ID_MARKER.findall(sentence) if i in by_id]
+        plain = _ID_MARKER.sub("", sentence).strip()
+        if ids and len(plain) >= _MIN_SENTENCE:
+            pairs.extend((plain, by_id[i].fragment.text) for i in ids)
+    if not pairs:
+        return None
+
+    from app.corpus.embed import embed_passages, embed_texts
+
+    claims = embed_texts([c for c, _ in pairs], settings, prefix=settings.embedding_query_prefix)
+    passages = embed_passages([f for _, f in pairs], settings)
+    return round(float((claims * passages).sum(axis=1).max()), 3)
+
+
 class Retriever:
     """Отбор фрагментов как зависимость: в тестах подменяется целиком."""
 
@@ -159,6 +188,9 @@ class Retriever:
 
     def attribute(self, text: str, hits: tuple[Hit, ...]) -> tuple[list[str], float]:
         return attribute(text, hits)
+
+    def citation_support(self, text: str, hits: tuple[Hit, ...]) -> float | None:
+        return citation_support(text, hits)
 
 
 def get_retriever() -> Retriever:

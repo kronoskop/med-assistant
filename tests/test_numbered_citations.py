@@ -265,3 +265,18 @@ def test_similarity_score_reaches_the_final_frame(client):
         json={"stream": True, "messages": [{"role": "user", "content": "?"}]},
     )
     assert _frames(response)[-1]["attribution_score"] == 0.91
+
+
+def test_citation_support_scores_cited_sentences_only(monkeypatch):
+    from app.corpus.service import citation_support
+
+    def fake(texts, settings, prefix=""):
+        rows = [[1.0, 0.0] if "немия" in t or "емоглобин" in t else [0.0, 1.0] for t in texts]
+        return embed.normalize(np.asarray(rows, dtype=np.float32))
+
+    monkeypatch.setattr(embed, "embed_texts", fake)
+    monkeypatch.setattr(embed, "embed_passages", lambda texts, settings: fake(texts, settings))
+    s = Settings(_env_file=None)
+    assert citation_support("Волны шумят у берега морского [a:ru:1:0].", HITS, s) == 0.0
+    assert citation_support("Анемия — гемоглобин ниже 110 г/л [a:ru:1:0].", HITS, s) == 1.0
+    assert citation_support("Без ссылок вовсе, просто длинное предложение.", HITS, s) is None

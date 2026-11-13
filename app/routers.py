@@ -210,7 +210,9 @@ async def _sse(
             found, attribution_best = await _attribute(retriever, answer, retrieval)
             claims.source_ids.extend(found)
             attribution = "similarity"
-    except Exception as exc:
+        elif retriever is not None and hasattr(retriever, "citation_support"):
+            attribution_best = await asyncio.to_thread(retriever.citation_support, answer, retrieval.hits)
+    except Exception as exc:  # noqa: BLE001 — любой сбой: кадр ошибки вместо обрыва
         # Обрыв посреди ответа: врач видит «ответ не завершён» (нет [DONE]), а в
         # журнале остаётся причина — код ошибки, без текста.
         code = exc.code if isinstance(exc, AppError) else type(exc).__name__
