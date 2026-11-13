@@ -29,6 +29,9 @@ from pathlib import Path
 
 import httpx
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from app.llm import cited_ids
+
 ROOT = Path(__file__).resolve().parents[1]
 QUESTIONS = ROOT / "eval" / "questions.jsonl"
 RESULTS = ROOT / "eval" / "results"
@@ -39,6 +42,13 @@ def load_questions(path: Path, lang: str | None, limit: int | None) -> list[dict
     if lang:
         items = [q for q in items if q["lang"] == lang]
     return items[:limit] if limit else items
+
+
+def _only(items: list[dict], only: str | None) -> list[dict]:
+    if not only:
+        return items
+    wanted = set(only.split(","))
+    return [q for q in items if q["id"] in wanted]
 
 
 def chat_once(client: httpx.Client, url: str, question: str) -> dict:
@@ -75,19 +85,21 @@ def chat_once(client: httpx.Client, url: str, question: str) -> dict:
         "source_docs": sorted({s["document_id"] for s in final.get("sources", [])}),
         "questions": len(final.get("questions", [])),
         "conflicts": len(final.get("conflicts", [])),
+        "text": text,
     }
 
 
 def run_chat(args) -> list[dict]:
     rows = []
     with httpx.Client(timeout=args.timeout) as client:
-        for item in load_questions(args.questions, args.lang, args.limit):
+        for item in _only(load_questions(args.questions, args.lang, args.limit), args.only):
             for attempt in range(args.repeat):
                 try:
                     result = chat_once(client, args.url, item["question"])
                 except httpx.HTTPError as exc:
                     result = {"error": type(exc).__name__}
-                row = {"id": item["id"], "lang": item["lang"], "kind": item["kind"], "attempt": attempt, **result}
+                shown = {k: v for k, v in result.items() if k != "text"}  # ответ в отчёт не пишем
+                row = {"id": item["id"], "lang": item["lang"], "kind": item["kind"], "attempt": attempt, **shown}
                 expected = set(item["expected_docs"])
                 if item["kind"] == "grounded":
                     row["ok"] = row.get("grounded", False) and bool(expected & set(row.get("source_docs", [])))
@@ -95,7 +107,19 @@ def run_chat(args) -> list[dict]:
                     row["ok"] = "error" not in row and not row.get("grounded", True)
                 rows.append(row)
                 _progress(row)
+                if args.show and "text" in result:
+                    _show(item, row, result["text"])
     return rows
+
+
+def _show(item: dict, row: dict, text: str) -> None:
+    """Текст ответа и ссылки — для разбора, почему ответ не засчитан."""
+    print(
+        f"   ждали {sorted(item['expected_docs'])} · заземлён {row.get('grounded')} · "
+        f"сноски {row.get('source_docs')} · маркеров в тексте {len(cited_ids(text))}",
+        file=sys.stderr,
+    )
+    print("   " + text.replace("\n", "\n   ")[:1500], file=sys.stderr)
 
 
 def run_retrieval(args) -> list[dict]:
@@ -182,6 +206,8 @@ def main() -> None:
     parser.add_argument("--limit", type=int)
     parser.add_argument("--repeat", type=int, default=1)
     parser.add_argument("--timeout", type=float, default=300)
+    parser.add_argument("--only", help="id вопросов через запятую, например ru-02,uz-01")
+    parser.add_argument("--show", action="store_true", help="печатать текст ответа и маркеры ссылок")
     parser.add_argument("--label", default="", help="подпись прогона в имени файла, например модель")
     args = parser.parse_args()
 
