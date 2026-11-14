@@ -271,12 +271,81 @@ def test_citation_support_scores_cited_sentences_only(monkeypatch):
     from app.corpus.service import citation_support
 
     def fake(texts, settings, prefix=""):
-        rows = [[1.0, 0.0] if "немия" in t or "емоглобин" in t else [0.0, 1.0] for t in texts]
+        rows = [
+            [1.0, 0.0] if "немия" in t or "емоглобин" in t else [0.0, 1.0]
+            for t in texts
+        ]
         return embed.normalize(np.asarray(rows, dtype=np.float32))
 
     monkeypatch.setattr(embed, "embed_texts", fake)
-    monkeypatch.setattr(embed, "embed_passages", lambda texts, settings: fake(texts, settings))
+    monkeypatch.setattr(
+        embed, "embed_passages", lambda texts, settings: fake(texts, settings)
+    )
     s = Settings(_env_file=None)
     assert citation_support("Волны шумят у берега морского [a:ru:1:0].", HITS, s) == 0.0
-    assert citation_support("Анемия — гемоглобин ниже 110 г/л [a:ru:1:0].", HITS, s) == 1.0
-    assert citation_support("Без ссылок вовсе, просто длинное предложение.", HITS, s) is None
+    assert (
+        citation_support("Анемия — гемоглобин ниже 110 г/л [a:ru:1:0].", HITS, s) == 1.0
+    )
+    assert (
+        citation_support("Без ссылок вовсе, просто длинное предложение.", HITS, s)
+        is None
+    )
+
+
+class Supporting(FakeRetriever):
+    def __init__(self, retrieval, score):
+        super().__init__(retrieval)
+        self.score = score
+
+    def citation_support(self, text, hits):
+        return self.score
+
+
+@pytest.mark.parametrize(
+    ("score", "grounded_"), [(0.80, False), (0.83, True), (None, True)]
+)
+def test_model_citations_need_support(client, score, grounded_):
+    _use(
+        FakeLLM(stream_parts=["Море шумит у скалистых берегов [1]."]),
+        Supporting(grounded(*HITS), score),
+    )
+    response = client.post(
+        "/api/v1/chat",
+        json={"stream": True, "messages": [{"role": "user", "content": "?"}]},
+    )
+    final = _frames(response)[-1]
+    assert final["grounded"] is grounded_
+    assert (final["refusal"] is None) is grounded_
+    assert final["attribution_score"] == score
+
+
+def test_unsupported_citations_are_refused_without_stream(client):
+    _use(
+        FakeLLM(reply="Море шумит у скалистых берегов [1]."),
+        Supporting(grounded(*HITS), 0.7),
+    )
+    body = client.post(
+        "/api/v1/chat", json={"messages": [{"role": "user", "content": "?"}]}
+    ).json()
+    assert body["grounded"] is False
+    assert "ничего не найдено" in body["message"]["content"]
+
+
+def test_marker_after_the_full_stop_belongs_to_the_sentence(monkeypatch):
+    from app.corpus.service import citation_support
+
+    seen: list[list[str]] = []
+
+    def fake(texts, settings, prefix=""):
+        seen.append(list(texts))
+        return embed.normalize(np.ones((len(texts), 2), dtype=np.float32))
+
+    monkeypatch.setattr(embed, "embed_texts", fake)
+    monkeypatch.setattr(
+        embed, "embed_passages", lambda texts, settings: fake(texts, settings)
+    )
+    score = citation_support(
+        "Анемия — гемоглобин ниже 110 г/л. [a:ru:1:0]", HITS, Settings(_env_file=None)
+    )
+    assert score == 1.0
+    assert seen[0] == ["Анемия — гемоглобин ниже 110 г/л"]

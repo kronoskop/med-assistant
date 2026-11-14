@@ -159,17 +159,28 @@ def citation_support(text: str, hits: tuple[Hit, ...], settings: Settings | None
     ссылаются: лучшая близость пары «предложение — его фрагмент».
 
     Ссылка сама по себе не доказывает опору: на посторонний вопрос модель
-    может написать стих и сослаться на протокол. Пока число только
-    записывается — по замеру выберем порог.
+    может написать стих и сослаться на протокол. Ниже порога
+    `citation_min_support` ответ не считается опирающимся на документы.
+    None — сравнить нечего (ссылки только на таблицы или без текста рядом).
     """
     settings = settings or get_settings()
     by_id = {hit.fragment.id: hit for hit in hits if not hit.fragment.is_table}
-    pairs: list[tuple[str, str]] = []
-    for sentence in _SENTENCE_END.split(text):
-        ids = [i for i in _ID_MARKER.findall(sentence) if i in by_id]
-        plain = _ID_MARKER.sub("", sentence).strip()
-        if ids and len(plain) >= _MIN_SENTENCE:
-            pairs.extend((plain, by_id[i].fragment.text) for i in ids)
+    # Ссылка, поставленная после точки («…г/л. [2]»), отрезается в отдельный
+    # кусок — она относится к предыдущему предложению.
+    sentences: list[tuple[str, list[str]]] = []
+    for piece in _SENTENCE_END.split(text):
+        ids = [i for i in _ID_MARKER.findall(piece) if i in by_id]
+        plain = _ID_MARKER.sub("", piece).strip(" .,;:")
+        if len(plain) < _MIN_SENTENCE and sentences:
+            sentences[-1][1].extend(ids)
+        else:
+            sentences.append((plain, ids))
+    pairs = [
+        (plain, by_id[i].fragment.text)
+        for plain, ids in sentences
+        if len(plain) >= _MIN_SENTENCE
+        for i in dict.fromkeys(ids)
+    ]
     if not pairs:
         return None
 

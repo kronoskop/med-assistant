@@ -24,6 +24,7 @@ from app.answer import (
 from app.corpus.service import Grounding, Retrieval, Retriever, get_retriever, render_fragments
 from app.llm import Claims, LLMClient, cited_ids, ensure_structured_output, get_llm
 from app.prompt import DISCLAIMER
+from app.settings import get_settings
 from app.schemas import UTF8JSONResponse, AppError, ChatMessage, ChatRequest, ChatResponse
 
 router = APIRouter()
@@ -101,12 +102,29 @@ async def chat(
     if not confirmed_sources(claimed, retrieval.hits):
         claimed, _ = await _attribute(retriever, woven, retrieval)
         attribution = "similarity"
+    elif _unsupported(await _support(retriever, numbered_to_ids(answer.text, retrieval.hits), retrieval)):
+        claimed = []
     _, grounded, _ = _settle(woven, retrieval, claimed)
     if not grounded:
         return _response(refusal_text(Grounding.NO_MATCH), retrieval, [])
     response = _response(woven, retrieval, claimed, answer.questions, answer.conflicts, said)
     response.attribution = attribution
     return response
+
+
+async def _support(retriever: Retriever, text: str, retrieval: Retrieval) -> float | None:
+    """Близость предложений со ссылками модели к их фрагментам (corpus.service.citation_support)."""
+    support = getattr(retriever, "citation_support", None)
+    if support is None:
+        return None
+    return await asyncio.to_thread(support, text, retrieval.hits)
+
+
+def _unsupported(score: float | None) -> bool:
+    """Ссылки модели есть, но сказанное на фрагменты не похоже: стих о море со
+    ссылкой на протокол. Такой ответ не подтверждён."""
+    threshold = get_settings().citation_min_support
+    return score is not None and threshold > 0 and score < threshold
 
 
 async def _attribute(retriever: Retriever, text: str, retrieval: Retrieval) -> tuple[list[str], float]:
@@ -161,6 +179,9 @@ def _sources_event(
         "grounded": grounded,
         "attribution": attribution,
         "attribution_score": attribution_score,
+        # Ответ уже показан по мере генерации; не подтвердился — интерфейс
+        # заменяет его этим отказом, как в ответе без потока.
+        "refusal": None if grounded or not retrieval.is_grounded else refusal_text(Grounding.NO_MATCH),
         "grounding": status,
         "sources": [s.model_dump() for s in sources],
         "support": [d.model_dump() for d in support_documents(retrieval)],
@@ -210,8 +231,10 @@ async def _sse(
             found, attribution_best = await _attribute(retriever, answer, retrieval)
             claims.source_ids.extend(found)
             attribution = "similarity"
-        elif retriever is not None and hasattr(retriever, "citation_support"):
-            attribution_best = await asyncio.to_thread(retriever.citation_support, answer, retrieval.hits)
+        elif retriever is not None:
+            attribution_best = await _support(retriever, answer, retrieval)
+            if _unsupported(attribution_best):
+                claims.source_ids.clear()
     except Exception as exc:  # noqa: BLE001 — любой сбой: кадр ошибки вместо обрыва
         # Обрыв посреди ответа: врач видит «ответ не завершён» (нет [DONE]), а в
         # журнале остаётся причина — код ошибки, без текста.

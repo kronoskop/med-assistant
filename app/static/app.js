@@ -224,6 +224,8 @@ async function ask(question) {
               reply.questions = parsed.questions || [];
               reply.conflicts = parsed.conflicts || [];
               reply.grounded = parsed.grounded;
+              // Не подтвердилось документами: показанный текст заменяется отказом.
+              if (parsed.grounded === false && parsed.refusal) reply.content = parsed.refusal;
               reply.grounding = parsed.grounding;
             }
           } catch (_) { /* неполный кадр — придёт в следующем чтении */ }
