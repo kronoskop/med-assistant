@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from app.absence import drop_absence_citations, strip_absence_markers, without_absence
 from app.answer import (
     MarkerRewriter,
     RepeatGuard,
@@ -96,13 +97,15 @@ async def chat(
         reasoning_chars=getattr(answer, "reasoning_chars", 0),
         answer_chars=len(answer.text),
     )
-    woven, inline = weave_citations(numbered_to_ids(answer.text, retrieval.hits), retrieval.hits)
-    claimed = [s.id for s in inline] or list(answer.source_ids)
+    with_ids = strip_absence_markers(numbered_to_ids(answer.text, retrieval.hits))
+    woven, inline = weave_citations(with_ids, retrieval.hits)
+    claimed = drop_absence_citations([s.id for s in inline] or list(answer.source_ids), with_ids)
+    substance = without_absence(with_ids)
     attribution = "model"
     if not confirmed_sources(claimed, retrieval.hits):
-        claimed, _ = await _attribute(retriever, woven, retrieval)
+        claimed, _ = await _attribute(retriever, without_absence(woven), retrieval)
         attribution = "similarity"
-    elif _unsupported(await _support(retriever, numbered_to_ids(answer.text, retrieval.hits), retrieval)):
+    elif _unsupported(await _support(retriever, substance, retrieval)):
         claimed = []
     _, grounded, _ = _settle(woven, retrieval, claimed)
     if not grounded:
@@ -226,13 +229,16 @@ async def _sse(
             yield f"data: {json.dumps({'text': tail}, ensure_ascii=False)}\n\n"
         answer = "".join(shown)
         claims.source_ids[:0] = [i for i in cited_ids(answer) if i not in claims.source_ids]
+        # «Во фрагментах этого нет [2]» — ссылка есть, а опоры нет.
+        claims.source_ids[:] = drop_absence_citations(claims.source_ids, answer)
+        substance = without_absence(answer)
         attribution, attribution_best = "model", None
         if retriever is not None and not confirmed_sources(claims.source_ids, retrieval.hits):
-            found, attribution_best = await _attribute(retriever, answer, retrieval)
+            found, attribution_best = await _attribute(retriever, substance, retrieval)
             claims.source_ids.extend(found)
             attribution = "similarity"
         elif retriever is not None:
-            attribution_best = await _support(retriever, answer, retrieval)
+            attribution_best = await _support(retriever, substance, retrieval)
             if _unsupported(attribution_best):
                 claims.source_ids.clear()
     except Exception as exc:  # noqa: BLE001 — любой сбой: кадр ошибки вместо обрыва
