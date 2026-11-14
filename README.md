@@ -1,6 +1,6 @@
 # med-assistant
 
-HTTP API ИИ-ассистента для медперсонала и веб-интерфейс к нему. Модель — локальная **MedGemma** (`med-gemma-1.5-4b`) в [LM Studio](https://lmstudio.ai/download/latest/darwin/arm64?format=dmg).
+HTTP API ИИ-ассистента для медперсонала и веб-интерфейс к нему. Модель — локальная **Gemma 4 E4B** (`google/gemma-4-e4b`; запасной вариант — MedGemma 1.5 4B) в [LM Studio](https://lmstudio.ai/download/latest/darwin/arm64?format=dmg).
 
 Чат собирается как типизированная программа [Ax](https://axllm.dev/) (Python-пакет `axllm`) и уходит в тот же локальный LM Studio. Облачный ключ OpenAI не нужен.
 

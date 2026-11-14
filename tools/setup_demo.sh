@@ -4,7 +4,7 @@
 #   ./tools/setup_demo.sh          # всё по порядку; повторный запуск быстрый
 #   ./tools/setup_demo.sh stop     # остановить сервер демо
 #
-# Что нужно заранее: LM Studio с загруженной MedGemma. Tailscale — по желанию: без него
+# Что нужно заранее: LM Studio с загруженной Gemma 4 E4B (или MedGemma). Tailscale — по желанию: без него
 # интерфейс доступен только на этой машине.
 set -euo pipefail
 
@@ -50,9 +50,11 @@ if ! curl -fsS -m 3 "$LMS_URL/models" >/dev/null 2>&1; then
 fi
 MODELS="$(curl -fsS "$LMS_URL/models" | python3 -c 'import json,sys; print("\n".join(m["id"] for m in json.load(sys.stdin)["data"]))')"
 echo "Модели в LM Studio:"; echo "$MODELS" | sed 's/^/  /'
-CHAT_MODEL="${LMSTUDIO_MODEL:-$(echo "$MODELS" | grep -iE 'med-?gemma' | head -1 || true)}"
+# Gemma 4 E4B — по замеру на kmm (2026-11-13): 43/62 против 33–36 у MedGemma,
+# вдвое быстрее и сама ставит ссылки. MedGemma — запасной вариант.
+CHAT_MODEL="${LMSTUDIO_MODEL:-$( { echo "$MODELS" | grep -iE 'gemma-4-e4b' || echo "$MODELS" | grep -iE 'med-?gemma' || true; } | head -1)}"
 EMBED_MODEL="${EMBEDDING_MODEL:-$(echo "$MODELS" | grep -i 'e5-small' | head -1 || true)}"
-[[ -n "$CHAT_MODEL" ]] || fail "MedGemma не найдена в LM Studio. Скачайте её в разделе Discover (лучше MLX-сборку, если есть)."
+[[ -n "$CHAT_MODEL" ]] || fail "Ни Gemma 4 E4B, ни MedGemma не найдены в LM Studio. Скачайте её в разделе Discover (лучше MLX-сборку, если есть)."
 echo "Чат: $CHAT_MODEL"
 echo "Эмбеддинги: внутри сервиса (intfloat/multilingual-e5-small, скачается при первой сборке)"
 
