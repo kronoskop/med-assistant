@@ -5,11 +5,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+
+
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.llm import ensure_structured_output, get_llm
 from app.routers import router
-from app.schemas import AppError, ErrorBody
+from app.schemas import AppError, ErrorBody, UTF8JSONResponse
 from app.web import router as web_router
 
 access_logger = logging.getLogger("app.access")
@@ -38,6 +40,7 @@ def create_app() -> FastAPI:
         title="med-assistant",
         description="HTTP API медицинского ИИ-ассистента",
         lifespan=_lifespan,
+        default_response_class=UTF8JSONResponse,
     )
     application.include_router(router)
     application.include_router(web_router)
@@ -51,7 +54,35 @@ def create_app() -> FastAPI:
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     await _check_model_on_startup(app)
+    await _warm_up_embeddings(app)
     yield
+
+
+async def _warm_up_embeddings(app: FastAPI) -> None:
+    """Модель эмбеддингов грузится при старте, а не на первом вопросе врача,
+    и сразу проверяется: сломанная модель видна администратору в журнале."""
+    import asyncio
+
+    from app.corpus.embed import check_quality
+    from app.corpus.service import _corpus
+    from app.settings import get_settings
+
+    if get_retriever_overridden(app):
+        return
+    settings = get_settings()
+    try:
+        if (await asyncio.to_thread(_corpus, settings)).is_empty:
+            return
+        related, unrelated = await asyncio.to_thread(check_quality, settings)
+        startup_logger.info("эмбеддинги готовы: по теме %.3f, чужая %.3f", related, unrelated)
+    except AppError as exc:
+        startup_logger.error("%s", exc.message)
+
+
+def get_retriever_overridden(app: FastAPI) -> bool:
+    from app.corpus.service import get_retriever
+
+    return get_retriever in app.dependency_overrides
 
 
 async def _check_model_on_startup(app: FastAPI) -> None:
@@ -88,7 +119,7 @@ async def _access_log(request: Request, call_next):
 
 
 async def _app_error_handler(_request: Request, exc: AppError) -> JSONResponse:
-    return JSONResponse(
+    return UTF8JSONResponse(
         status_code=exc.status_code,
         content=ErrorBody(code=exc.code, message=exc.message).model_dump(),
     )
@@ -98,7 +129,7 @@ async def _validation_handler(
     _request: Request,
     _exc: RequestValidationError,
 ) -> JSONResponse:
-    return JSONResponse(
+    return UTF8JSONResponse(
         status_code=422,
         content=ErrorBody(
             code="validation_error",
@@ -110,7 +141,7 @@ async def _validation_handler(
 async def _http_handler(_request: Request, exc: StarletteHTTPException) -> JSONResponse:
     code = "not_found" if exc.status_code == 404 else "http_error"
     message = "Не найдено" if exc.status_code == 404 else str(exc.detail)
-    return JSONResponse(
+    return UTF8JSONResponse(
         status_code=exc.status_code,
         content=ErrorBody(code=code, message=message).model_dump(),
     )

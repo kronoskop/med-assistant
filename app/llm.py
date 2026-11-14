@@ -22,7 +22,13 @@ from axllm import (
     ax,
 )
 
-from app.prompt import GROUNDING_INSTRUCTION, QUESTIONS_INSTRUCTION, SYSTEM_PROMPT
+from app.prompt import (
+    ANSWER_REMINDER,
+    GROUNDING_INSTRUCTION,
+    LANGUAGE_NAMES,
+    QUESTIONS_INSTRUCTION,
+    SYSTEM_PROMPT,
+)
 from app.schemas import AppError, ChatMessage
 from app.settings import Settings, get_settings
 
@@ -223,6 +229,8 @@ class LMStudioCompatibleClient(OpenAICompatibleClient):
             payload["response_format"] = self._schema
             payload.pop("max_completion_tokens", None)
             payload["max_tokens"] = self._max_tokens
+            if self._settings.repeat_penalty and self._settings.repeat_penalty != 1.0:
+                payload["repeat_penalty"] = self._settings.repeat_penalty  # LM Studio, вне OpenAI
         result = super()._request_json(endpoint, payload, **kwargs)
         if not kwargs.get("stream"):
             reasoning = _reasoning_from_body(result)
@@ -314,6 +322,7 @@ def _make_clarify_program():
 
 
 clarify_logger = logging.getLogger("app.clarify")
+answer_logger = logging.getLogger("app.answer")
 
 
 class LLMClient:
@@ -364,6 +373,14 @@ class LLMClient:
             "fragments": fragments or "Фрагменты не найдены.",
         }
 
+    def _answer_inputs(self, values: dict[str, str], language: str | None) -> dict[str, str]:
+        """Для ответа — напоминание о языке и номерах в самом конце фрагментов.
+        Уточнениям оно не нужно: там своя форма ссылки."""
+        if language not in LANGUAGE_NAMES:
+            return values
+        reminder = ANSWER_REMINDER.format(language=LANGUAGE_NAMES[language])
+        return {**values, "fragments": f"{values['fragments']}\n\n{reminder}"}
+
     async def _clarify(self, values: dict[str, str]) -> tuple[tuple[Any, ...], tuple[Any, ...], float]:
         """Уточнения и противоречия. Сбой здесь не роняет ответ: уточнения
         дополняют ответ и не могут быть причиной его потери."""
@@ -391,11 +408,15 @@ class LLMClient:
             return await self._clarify(values)
         return (), (), None
 
-    async def complete(self, messages: list[ChatMessage], fragments: str = "") -> Answer:
+    async def complete(
+        self, messages: list[ChatMessage], fragments: str = "", language: str | None = None
+    ) -> Answer:
         values = self._inputs(messages, fragments)
         clarify = self._start_clarify(values)
         try:
-            result = await asyncio.to_thread(_make_answer_program().forward, self._ai, values)
+            result = await asyncio.to_thread(
+                _make_answer_program().forward, self._ai, self._answer_inputs(values, language)
+            )
         except Exception as exc:
             if clarify is not None:
                 clarify.cancel()
@@ -419,6 +440,7 @@ class LLMClient:
         messages: list[ChatMessage],
         fragments: str = "",
         claims: Claims | None = None,
+        language: str | None = None,
     ) -> AsyncIterator[str]:
         """`claims`, если передан, наполняется по завершении потока: ссылками
         из текста ответа и уточнениями из отдельной программы."""
@@ -430,7 +452,7 @@ class LLMClient:
 
         def run() -> None:
             try:
-                for event in program.streaming_forward(self._ai, values):
+                for event in program.streaming_forward(self._ai, self._answer_inputs(values, language)):
                     loop.call_soon_threadsafe(queue.put_nowait, ("event", event))
                 loop.call_soon_threadsafe(queue.put_nowait, ("done", None))
             except Exception as exc:
@@ -449,6 +471,12 @@ class LLMClient:
             try:
                 while True:
                     kind, payload = pending.pop(0) if pending else await queue.get()
+                    if kind == "error" and reader.emitted:
+                        # Ответ уже пишется, а программа упала в конце — обычно
+                        # JSON оборван потолком длины. Врач получает написанное
+                        # со сносками, а не обрыв соединения.
+                        answer_logger.warning("ответ оборван: %s", type(payload).__name__)
+                        kind = "done"
                     if kind == "error":
                         raise _map_ax_error(payload) from payload
                     if kind == "done":
