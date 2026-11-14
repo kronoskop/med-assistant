@@ -50,6 +50,16 @@ class Corpus:
         self.documents = {document.id: document for document in documents}
         self.fragments = fragments
         self.vectors = vectors
+        self._lexical = None
+
+    @property
+    def lexical(self):
+        """Индекс слов строится при первом гибридном запросе: около секунды."""
+        if self._lexical is None:
+            from app.corpus.lexical import LexicalIndex
+
+            self._lexical = LexicalIndex([f.text for f in self.fragments])
+        return self._lexical
 
     @property
     def is_empty(self) -> bool:
@@ -71,6 +81,20 @@ class Corpus:
             fragment = self.fragments[int(position)]
             hits.append(Hit(fragment, self.documents[fragment.document_id], score))
         return hits
+
+
+    def search_hybrid(self, question: str, query_vector: np.ndarray, *, top_k: int, depth: int = 50) -> list[Hit]:
+        """Векторы и слова вместе (RRF). Оценка у Hit — косинус: по ней
+        сортируют и показывают, а не по рангу слияния."""
+        if self.is_empty or self.vectors.size == 0:
+            return []
+        from app.corpus.lexical import fuse
+
+        cosine = self.vectors @ query_vector
+        order = fuse(cosine, self.lexical.scores(question), depth=depth)[:top_k]
+        return [
+            Hit(self.fragments[p], self.documents[self.fragments[p].document_id], float(cosine[p])) for p in order
+        ]
 
 
 def build(

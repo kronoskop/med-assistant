@@ -222,6 +222,11 @@ def main() -> None:
 
     rows = run_chat(args) if args.mode == "chat" else run_retrieval(args)
     summary = summarize(rows, args.mode)
+    if args.mode == "retrieval":
+        from app.settings import get_settings
+
+        settings = get_settings()
+        summary += f"\nпоиск: {settings.retrieval_mode}, переранжирование: {settings.reranker_model or 'нет'}"
     print(summary)
 
     RESULTS.mkdir(parents=True, exist_ok=True)
