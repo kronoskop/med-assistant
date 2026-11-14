@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from enum import Enum
@@ -60,11 +61,13 @@ def retrieve(question: str, settings: Settings | None = None, *, corpus: Corpus 
     )
 
     vectors = embed_query(question, settings)
-    candidates = corpus.search(
-        vectors[0],
-        top_k=settings.retrieval_top_k * 4,
-        min_score=settings.retrieval_min_score,
-    )
+    pool = max(settings.retrieval_top_k * 4, settings.rerank_candidates if settings.reranker_model else 0)
+    if settings.retrieval_mode == "hybrid":
+        candidates = corpus.search_hybrid(question, vectors[0], top_k=pool)
+    else:
+        candidates = corpus.search(vectors[0], top_k=pool, min_score=settings.retrieval_min_score)
+    if settings.reranker_model and candidates:
+        candidates = _reranked(question, candidates, settings.reranker_model)
     hits = tuple(_prefer_prose(candidates, settings.retrieval_top_k, settings.retrieval_max_tables))
     support = tuple(corpus.support_documents())
     if hits:
@@ -72,6 +75,18 @@ def retrieve(question: str, settings: Settings | None = None, *, corpus: Corpus 
     if support:
         return Retrieval(Grounding.SUPPORT_ONLY, (), support)
     return Retrieval(Grounding.NO_MATCH)
+
+
+def _reranked(question: str, candidates: list[Hit], model: str) -> list[Hit]:
+    from app.corpus.rerank import rerank
+
+    try:
+        scores = rerank(question, [h.fragment.text for h in candidates], model)
+    except Exception as exc:  # noqa: BLE001 — без переранжирования ответ хуже, но он есть
+        logging.getLogger("app.corpus").error("переранжирование не сработало: %s", type(exc).__name__)
+        return candidates
+    paired = sorted(zip(scores, range(len(candidates))), key=lambda p: -p[0])
+    return [candidates[i] for _, i in paired]
 
 
 def _prefer_prose(candidates: list[Hit], top_k: int, max_tables: int) -> list[Hit]:
@@ -87,7 +102,10 @@ def _prefer_prose(candidates: list[Hit], top_k: int, max_tables: int) -> list[Hi
     chosen = prose[:top_k]
     room = max(top_k - len(chosen), 0) + min(max_tables, top_k)
     chosen += tables[: min(max_tables, room)]
-    chosen.sort(key=lambda h: -h.score)
+    # Порядок кандидатов уже лучший из доступных (косинус, слияние или
+    # переранжирование): сохраняем его, а не пересортировываем по косинусу.
+    position = {id(h): i for i, h in enumerate(candidates)}
+    chosen.sort(key=lambda h: position[id(h)])
     return chosen[: top_k + max_tables]
 
 

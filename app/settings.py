@@ -44,6 +44,14 @@ class Settings(BaseSettings):
     embedding_query_prefix: str = "query: "
     embedding_passage_prefix: str = "passage: "
     retrieval_top_k: int = 4
+    # vector — только эмбеддинги; hybrid — эмбеддинги и слова (BM25), слияние по
+    # рангу. Слова достают абзацы с конкретикой: пороги, препараты, сроки.
+    retrieval_mode: Literal["vector", "hybrid"] = "vector"
+    # Переранжирование кандидатов кросс-энкодером (sentence-transformers), например
+    # BAAI/bge-reranker-v2-m3. Пусто — выключено. Модель скачивается при первом
+    # запуске, затем работает без сети.
+    reranker_model: str = ""
+    rerank_candidates: int = 20
     # Таблицы в выдаче нужны для ссылок, но не должны вытеснять прозу:
     # их содержимое модели не показывается.
     retrieval_max_tables: int = 2

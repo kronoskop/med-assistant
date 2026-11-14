@@ -71,10 +71,22 @@ async def _warm_up_embeddings(app: FastAPI) -> None:
         return
     settings = get_settings()
     try:
-        if (await asyncio.to_thread(_corpus, settings)).is_empty:
+        corpus = await asyncio.to_thread(_corpus, settings)
+        if corpus.is_empty:
             return
         related, unrelated = await asyncio.to_thread(check_quality, settings)
         startup_logger.info("эмбеддинги готовы: по теме %.3f, чужая %.3f", related, unrelated)
+        if settings.retrieval_mode == "hybrid":
+            await asyncio.to_thread(lambda: corpus.lexical)
+            startup_logger.info("индекс слов готов")
+        if settings.reranker_model:
+            from app.corpus.rerank import rerank
+
+            try:
+                await asyncio.to_thread(rerank, "проверка", ["проверка"], settings.reranker_model)
+                startup_logger.info("переранжирование готово: %s", settings.reranker_model)
+            except Exception as exc:  # noqa: BLE001 — сервис работает и без переранжирования
+                startup_logger.error("переранжирование недоступно (%s): %s", settings.reranker_model, exc)
     except AppError as exc:
         startup_logger.error("%s", exc.message)
 
