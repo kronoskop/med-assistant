@@ -210,7 +210,7 @@ def normalize_answer(text: str) -> str:
 # Номера фрагментов в тексте модели: [2], [1, 3], [1; 3].
 _NUMBERED = re.compile(r"\[\s*(\d{1,2}(?:\s*[,;]\s*\d{1,2})*)\s*\]")
 # Сколько символов после «[» ждать закрывающую скобку, прежде чем отпустить текст.
-_PENDING_LIMIT = 16
+_PENDING_LIMIT = 40
 
 
 def numbered_to_ids(text: str, hits: tuple[Hit, ...]) -> str:

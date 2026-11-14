@@ -349,3 +349,11 @@ def test_marker_after_the_full_stop_belongs_to_the_sentence(monkeypatch):
     )
     assert score == 1.0
     assert seen[0] == ["Анемия — гемоглобин ниже 110 г/л"]
+
+
+@pytest.mark.parametrize("step", [1, 3, 7])
+def test_rewriter_handles_long_number_lists(step):
+    raw = "Нет данных [1, 2, 2, 1, 2, 1]."
+    rewriter = MarkerRewriter(HITS)
+    out = "".join(rewriter.feed(raw[i : i + step]) for i in range(0, len(raw), step)) + rewriter.flush()
+    assert out == "Нет данных [a:ru:1:0][b:ru:1:0][b:ru:1:0][a:ru:1:0][b:ru:1:0][a:ru:1:0]."
