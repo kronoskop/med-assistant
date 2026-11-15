@@ -36,7 +36,7 @@ def main() -> int:
     started = time.perf_counter()
     print("Скачиваю документы…", flush=True)
     results, failed = [], []
-    with httpx.Client(headers={"User-Agent": "CliniCompass corpus fetcher"}) as client:
+    with httpx.Client(headers={"User-Agent": "Meyar corpus fetcher"}) as client:
         for document in load(MANIFEST_PATH):
             for edition in document.local_editions:
                 try:

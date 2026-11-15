@@ -4,6 +4,8 @@
 // дополняют I18N из data.js (тот файл генерируется из макета).
 const REVIEW_I18N = {
   ru: {
+    // Имя продукта «meyar» не переводится; подпись под ним — на языке интерфейса.
+    brandTagline: 'Клинический стандарт под рукой',
     loginTitle: 'Вход в систему',
     loginSub: 'Учётную запись выдаёт администратор.',
     loginName: 'Логин',
@@ -100,6 +102,8 @@ const REVIEW_I18N = {
     errGeneric: 'Не удалось выполнить действие.',
   },
   uz: {
+    // Имя продукта «meyar» не переводится; подпись под ним — на языке интерфейса.
+    brandTagline: 'Klinik standart qo‘l ostida',
     loginTitle: 'Tizimga kirish',
     loginSub: 'Hisob yozuvini administrator beradi.',
     loginName: 'Login',
@@ -196,6 +200,8 @@ const REVIEW_I18N = {
     errGeneric: 'Amalni bajarib boʻlmadi.',
   },
   en: {
+    // Имя продукта «meyar» не переводится; подпись под ним — на языке интерфейса.
+    brandTagline: 'The clinical standard at hand',
     loginTitle: 'Sign in',
     loginSub: 'Accounts are issued by the administrator.',
     loginName: 'Login',
