@@ -762,9 +762,9 @@ function applyStatic() {
 // Языки: доступные переключаются, будущие показаны как «скоро», чтобы было
 // видно направление продукта, но не создавалось ложное обещание.
 const LANGUAGES = [
-  { code: 'ru', label: 'Русский', native: 'Русский', ready: true },
-  { code: 'uz', label: 'Узбекский', native: 'Oʻzbekcha', ready: true },
   { code: 'en', label: 'Английский', native: 'English', ready: true },
+  { code: 'uz', label: 'Узбекский', native: 'Oʻzbekcha', ready: true },
+  { code: 'ru', label: 'Русский', native: 'Русский', ready: true },
   { code: 'ar', label: 'Арабский', native: 'العربية', ready: false },
 ];
 
