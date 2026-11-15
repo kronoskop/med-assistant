@@ -60,18 +60,16 @@ const Review = (() => {
     const error = el('div', { class: 'rv-error', role: 'alert', text: message || '' });
     const submit = el('button', { class: 'rv-primary', type: 'submit', text: T().loginBtn });
     const form = el('form', { class: 'rv-login-card' }, [
-      el('div', { class: 'rv-login-brand' }, [el('span', { class: 'rv-login-mark' }, [mark(20)]), el('span', { text: 'CliniCompass' })]),
+      el('div', { class: 'rv-login-brand' }, [
+        el('span', { class: 'rv-login-mark' }, [mark(20)]),
+        el('span', { text: 'CliniCompass' }),
+        languagePicker(),
+      ]),
       el('h2', { text: T().loginTitle }),
       el('p', { class: 'rv-muted', text: T().loginSub }),
       el('label', { for: 'rv-login-name', text: T().loginName }), login,
       el('label', { for: 'rv-login-password', text: T().loginPassword }), password,
       error, submit,
-      el('div', { class: 'rv-login-langs' }, LANGUAGES.filter((l) => l.ready).map((l) =>
-        el('button', {
-          type: 'button', 'aria-pressed': l.code === state.lang ? 'true' : 'false', text: l.native,
-          onClick: () => { setLanguage(l.code); showLogin(); },
-        })
-      )),
     ]);
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -96,6 +94,56 @@ const Review = (() => {
     box = el('div', { id: 'rv-login', class: 'rv-login' }, [form]);
     document.body.appendChild(box);
     login.focus();
+  }
+
+  // Флаги нарисованы здесь же: эмодзи-флаги есть не во всех системах, а
+  // картинок с CDN на машине без интернета не будет.
+  const FLAGS = {
+    uz: '<rect width="24" height="16" fill="#fff"/><rect width="24" height="5.2" fill="#0099b5"/><rect y="10.8" width="24" height="5.2" fill="#1eb53a"/><rect y="5.2" width="24" height=".5" fill="#ce1126"/><rect y="10.3" width="24" height=".5" fill="#ce1126"/><circle cx="4.4" cy="2.6" r="1.6" fill="#fff"/><circle cx="5" cy="2.6" r="1.6" fill="#0099b5"/><g fill="#fff"><circle cx="7.4" cy="1.5" r=".35"/><circle cx="8.8" cy="1.5" r=".35"/><circle cx="10.2" cy="1.5" r=".35"/><circle cx="7.4" cy="2.7" r=".35"/><circle cx="8.8" cy="2.7" r=".35"/><circle cx="10.2" cy="2.7" r=".35"/><circle cx="8.8" cy="3.9" r=".35"/><circle cx="10.2" cy="3.9" r=".35"/></g>',
+    ru: '<rect width="24" height="16" fill="#fff"/><rect y="5.33" width="24" height="5.34" fill="#0039a6"/><rect y="10.67" width="24" height="5.33" fill="#d52b1e"/>',
+    en: '<rect width="24" height="16" fill="#012169"/><path d="M0 0l24 16M24 0L0 16" stroke="#fff" stroke-width="3.2"/><path d="M0 0l24 16M24 0L0 16" stroke="#c8102e" stroke-width="1.2"/><path d="M12 0v16M0 8h24" stroke="#fff" stroke-width="5"/><path d="M12 0v16M0 8h24" stroke="#c8102e" stroke-width="2.8"/>',
+  };
+
+  function flag(code) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 16');
+    svg.setAttribute('class', 'rv-flag');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.innerHTML = FLAGS[code] || '';
+    return svg;
+  }
+
+  // Значок с флагом текущего языка; по нажатию — список языков.
+  function languagePicker() {
+    const current = LANGUAGES.find((l) => l.code === state.lang);
+    const list = el('div', { class: 'rv-lang-list', role: 'menu', hidden: true }, LANGUAGES.filter((l) => l.ready).map((l) =>
+      el('button', {
+        type: 'button', role: 'menuitemradio', 'aria-checked': l.code === state.lang ? 'true' : 'false',
+        onClick: () => { setLanguage(l.code); showLogin(); },
+      }, [flag(l.code), el('span', { text: l.native })])
+    ));
+    const toggle = el('button', {
+      class: 'rv-lang-toggle', type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false',
+      'aria-label': 'Til · Язык · Language: ' + current.native,
+      onClick: () => {
+        list.hidden = !list.hidden;
+        toggle.setAttribute('aria-expanded', list.hidden ? 'false' : 'true');
+        if (!list.hidden) list.querySelector('[aria-checked="true"]').focus();
+      },
+    }, [flag(state.lang), el('span', { text: state.lang.toUpperCase() }), icon('caret-down')]);
+    const box = el('div', { class: 'rv-lang' }, [toggle, list]);
+    box.addEventListener('focusout', (e) => {
+      if (box.contains(e.relatedTarget)) return;
+      list.hidden = true;
+      toggle.setAttribute('aria-expanded', 'false');
+    });
+    box.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape' || list.hidden) return;
+      list.hidden = true;
+      toggle.setAttribute('aria-expanded', 'false');
+      toggle.focus();
+    });
+    return box;
   }
 
   function setLanguage(code) {

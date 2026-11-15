@@ -40,6 +40,7 @@ const ICONS = {
   'seal-check': 'M12 3l2.3 1.7 2.9-.1.9 2.7 2.3 1.7-.9 2.7.9 2.7-2.3 1.7-.9 2.7-2.9-.1L12 21l-2.3-1.7-2.9.1-.9-2.7L3.6 15l.9-2.7-.9-2.7 2.3-1.7.9-2.7 2.9.1zM9 12l2 2 4-4',
   'users': 'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M2.5 20a6.5 6.5 0 0 1 13 0M16 4.2a3.5 3.5 0 0 1 0 6.6M18 14.3a6.5 6.5 0 0 1 3.5 5.7',
   'sign-out': 'M14 4H6v16h8M10 12h10M17 8.5l3.5 3.5-3.5 3.5',
+  'caret-down': 'M6 9.5l6 6 6-6',
   'sun': 'M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4',
 };
 
@@ -103,7 +104,7 @@ function el(tag, props, children) {
 // не хранит, а писать клинические тексты в localStorage на общей рабочей
 // станции нельзя.
 const state = {
-  lang: 'ru',
+  lang: 'uz',  // язык по умолчанию; выбранный на экране входа запоминается
   chats: [],
   activeId: null,
   consult: 0,
@@ -761,9 +762,9 @@ function applyStatic() {
 // Языки: доступные переключаются, будущие показаны как «скоро», чтобы было
 // видно направление продукта, но не создавалось ложное обещание.
 const LANGUAGES = [
-  { code: 'ru', label: 'Русский', native: 'Русский', ready: true },
-  { code: 'uz', label: 'Узбекский', native: 'Oʻzbekcha', ready: true },
   { code: 'en', label: 'Английский', native: 'English', ready: true },
+  { code: 'uz', label: 'Узбекский', native: 'Oʻzbekcha', ready: true },
+  { code: 'ru', label: 'Русский', native: 'Русский', ready: true },
   { code: 'ar', label: 'Арабский', native: 'العربية', ready: false },
 ];
 
