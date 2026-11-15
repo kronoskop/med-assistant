@@ -193,17 +193,14 @@ const Review = (() => {
     out.hidden = !signedIn();
     document.getElementById('rv-admin').hidden = !isAdmin();
     document.getElementById('rv-admin-label').textContent = T().adminMenu;
-    // Профиль и параметры живут в меню «Настройки», рядом с языком.
+    // Профиль живёт в меню «Настройки», рядом с языком.
     const extra = document.getElementById('rv-settings-extra');
     extra.hidden = !signedIn();
     const entry = (name, label, tab) => el('button', {
       class: 'lang-row', type: 'button',
       onClick: () => { toggleSettings(false); openWorkspace('settings', tab); },
     }, [icon(name), el('span', { class: 'lang-label', text: label })]);
-    extra.replaceChildren(...(signedIn() ? [
-      entry('user-circle', T().tabProfile, 'profile'),
-      isAdmin() ? entry('gear', T().systemSettings, 'settings') : null,
-    ].filter(Boolean) : []));
+    extra.replaceChildren(...(signedIn() ? [entry('user-circle', T().tabProfile, 'profile')] : []));
     document.getElementById('rv-open-label').textContent = T().workspace;
     document.getElementById('rv-logout-label').textContent = T().logout;
     const total = session.counts.queue + session.counts.unread;
@@ -317,8 +314,8 @@ const Review = (() => {
   // ── кабинет ─────────────────────────────────────────────
   // Три меню боковой панели: уточнения, администрирование, настройки.
   function tabs() {
-    if (view.group === 'admin') return isAdmin() ? ['users'] : [];
-    if (view.group === 'settings') return isAdmin() ? ['profile', 'settings'] : ['profile'];
+    if (view.group === 'admin') return isAdmin() ? ['users', 'settings'] : [];
+    if (view.group === 'settings') return ['profile'];
     const list = [];
     if (isMedic()) list.push('queue', 'mine');
     if (isMedic() || isAdmin()) list.push('accepted');
