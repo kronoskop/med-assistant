@@ -61,17 +61,20 @@ const Review = (() => {
     const submit = el('button', { class: 'rv-primary', type: 'submit', text: T().loginBtn });
     const form = el('form', { class: 'rv-login-card' }, [
       el('div', { class: 'rv-login-brand' }, [el('span', { class: 'rv-login-mark' }, [mark(20)]), el('span', { text: 'CliniCompass' })]),
-      el('h2', { text: T().loginTitle }),
-      el('p', { class: 'rv-muted', text: T().loginSub }),
-      el('label', { for: 'rv-login-name', text: T().loginName }), login,
-      el('label', { for: 'rv-login-password', text: T().loginPassword }), password,
-      error, submit,
-      el('div', { class: 'rv-login-langs' }, LANGUAGES.filter((l) => l.ready).map((l) =>
+      // Язык выбирается до входа: подписи на трёх языках сразу, чтобы выбор
+      // был понятен тому, кто не читает на текущем.
+      el('span', { class: 'rv-login-langs-label', text: 'Язык · Til · Language' }),
+      el('div', { class: 'rv-login-langs', role: 'group', 'aria-label': 'Язык · Til · Language' }, LANGUAGES.filter((l) => l.ready).map((l) =>
         el('button', {
           type: 'button', 'aria-pressed': l.code === state.lang ? 'true' : 'false', text: l.native,
           onClick: () => { setLanguage(l.code); showLogin(); },
         })
       )),
+      el('h2', { text: T().loginTitle }),
+      el('p', { class: 'rv-muted', text: T().loginSub }),
+      el('label', { for: 'rv-login-name', text: T().loginName }), login,
+      el('label', { for: 'rv-login-password', text: T().loginPassword }), password,
+      error, submit,
     ]);
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
