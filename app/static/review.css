@@ -16,16 +16,29 @@
 }
 .rv-login-brand { display: flex; align-items: center; gap: 10px; font-family: "Source Serif 4", Georgia, serif; font-size: 17px; font-weight: 700; }
 .rv-login-mark { display: flex; padding: 7px; border-radius: 6px; background: var(--brand); }
-.rv-login-card h2 { margin: 12px 0 0; font-family: "Source Serif 4", Georgia, serif; font-size: 21px; }
+.rv-login-card h2 { margin: 14px 0 0; font-family: "Source Serif 4", Georgia, serif; font-size: 21px; }
 .rv-login-card p { margin: 0 0 8px; }
 .rv-login-card label { font-size: 12px; font-weight: 500; color: var(--ink-muted); margin-top: 4px; }
 .rv-login-card .rv-primary { margin-top: 8px; padding: 10px; justify-content: center; }
-.rv-login-langs-label { margin-top: 16px; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 600; color: var(--ink-faint); }
-.rv-login-langs { display: flex; gap: 4px; padding: 4px; border-radius: 8px; background: var(--brand-tab); }
-.rv-login-langs button { flex: 1; border: none; background: none; padding: 8px 6px; border-radius: 6px; font: inherit; font-size: 13px; color: var(--ink-muted); cursor: pointer; }
-.rv-login-langs button:hover { color: var(--ink); }
-.rv-login-langs button[aria-pressed="true"] { background: #fff; color: var(--ink); font-weight: 600; box-shadow: 0 1px 3px rgba(18, 40, 75, 0.18); }
-.rv-login-langs button:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.rv-lang { position: relative; margin-left: auto; font-family: "IBM Plex Sans", system-ui, sans-serif; }
+.rv-flag { width: 24px; height: 16px; flex: none; border-radius: 2px; box-shadow: 0 0 0 1px var(--line-field); }
+.rv-lang-toggle {
+  display: flex; align-items: center; gap: 7px; padding: 6px 8px; border: 1px solid var(--line-field); border-radius: 6px;
+  background: #fff; font: inherit; font-size: 12px; font-weight: 600; color: var(--ink-muted); cursor: pointer;
+}
+.rv-lang-toggle:hover, .rv-lang-toggle[aria-expanded="true"] { background: var(--brand-tab); color: var(--ink); }
+.rv-lang-toggle .icon { font-size: 12px; }
+.rv-lang-list {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 2; min-width: 170px; padding: 4px;
+  border: 1px solid var(--line); border-radius: 7px; background: #fff; box-shadow: 0 10px 28px rgba(18, 40, 75, 0.22);
+}
+.rv-lang-list button {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: none; border-radius: 5px;
+  background: none; font: inherit; font-size: 13.5px; font-weight: 400; color: var(--ink); cursor: pointer; text-align: left;
+}
+.rv-lang-list button:hover { background: var(--brand-tab); }
+.rv-lang-list button[aria-checked="true"] { font-weight: 600; background: var(--brand-soft); }
+.rv-lang-toggle:focus-visible, .rv-lang-list button:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
 .rv-error { min-height: 18px; font-size: 12.5px; color: var(--danger); }
 
 .rv-overlay {
