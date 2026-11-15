@@ -46,14 +46,18 @@
         <span class="side-settings-label" id="rv-open-label"></span>
         <span class="rv-badge" id="rv-badge" hidden></span>
       </button>
-      <button class="side-settings" id="rv-logout" type="button" hidden>
-        <span class="icon" data-icon="sign-out"></span>
-        <span class="side-settings-label" id="rv-logout-label"></span>
+      <button class="side-settings" id="rv-admin" type="button" hidden>
+        <span class="icon" data-icon="shield-check"></span>
+        <span class="side-settings-label" id="rv-admin-label"></span>
       </button>
       <button class="side-settings" id="settings-toggle" type="button">
         <span class="icon" data-icon="gear"></span>
         <span class="side-settings-label" data-t="settingsTitle"></span>
         <span class="side-settings-value" id="settings-lang"></span>
+      </button>
+      <button class="side-settings" id="rv-logout" type="button" hidden>
+        <span class="icon" data-icon="sign-out"></span>
+        <span class="side-settings-label" id="rv-logout-label"></span>
       </button>
     </div>
 
@@ -65,6 +69,7 @@
       <span class="settings-label" data-t="languageTitle"></span>
       <div class="settings-langs" id="lang-list"></div>
       <span class="settings-note" data-t="modelLangNote"></span>
+      <div class="settings-langs rv-settings-extra" id="rv-settings-extra" hidden></div>
     </div>
   </aside>
 
