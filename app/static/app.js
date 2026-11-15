@@ -34,6 +34,12 @@ const ICONS = {
   'test-tube': 'M9 3h6M10 3v13a2 2 0 0 0 4 0V3M10 11h4',
   'first-aid-kit': 'M3.5 7.5h17v12.5h-17zM9 7.5V5h6v2.5M12 11.5v5M9.5 14h5',
   'question': 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18M9.6 9.4a2.5 2.5 0 1 1 3.2 2.9c-.5.2-.8.7-.8 1.2v.5M12 16.8h.01',
+  'search': 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14M20 20l-4-4',
+  'pencil': 'M4 20l1-4.5L16.5 4a2.1 2.1 0 0 1 3 3L8 18.5zM14.5 6l3 3',
+  'x': 'M6 6l12 12M18 6L6 18',
+  'seal-check': 'M12 3l2.3 1.7 2.9-.1.9 2.7 2.3 1.7-.9 2.7.9 2.7-2.3 1.7-.9 2.7-2.9-.1L12 21l-2.3-1.7-2.9.1-.9-2.7L3.6 15l.9-2.7-.9-2.7 2.3-1.7.9-2.7 2.9.1zM9 12l2 2 4-4',
+  'users': 'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M2.5 20a6.5 6.5 0 0 1 13 0M16 4.2a3.5 3.5 0 0 1 0 6.6M18 14.3a6.5 6.5 0 0 1 3.5 5.7',
+  'sign-out': 'M14 4H6v16h8M10 12h10M17 8.5l3.5 3.5-3.5 3.5',
   'sun': 'M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4',
 };
 
@@ -189,6 +195,14 @@ async function ask(question) {
       let body = {};
       try { body = await response.json(); } catch (_) { /* тело может быть пустым */ }
       thread().splice(thread().indexOf(reply), 1);
+      if (response.status === 401) {
+        // Сеанс истёк: вопрос остаётся в поле ввода и ждёт повторного входа.
+        thread().pop();
+        input.value = text;
+        finish();
+        Review.showLogin();
+        return;
+      }
       pushError(body.code || 'http_' + response.status, body.message || '');
       if (body.code === 'llm_unavailable') setStatus('down');
       finish();
@@ -227,6 +241,7 @@ async function ask(question) {
               // Не подтвердилось документами: показанный текст заменяется отказом.
               if (parsed.grounded === false && parsed.refusal) reply.content = parsed.refusal;
               reply.grounding = parsed.grounding;
+              reply.verified = parsed.verified || null;
             }
           } catch (_) { /* неполный кадр — придёт в следующем чтении */ }
         }
@@ -527,8 +542,9 @@ function renderEscalate() {
   ]);
 }
 
-function renderActions() {
+function renderActions(item) {
   return el('div', { class: 'actions' }, [
+    Review.actionButton(item),
     el('button', { type: 'button', onClick: regenerate }, [icon('arrows-clockwise'), T().again]),
     el('button', { type: 'button', onClick: addProtocolCard }, [icon('file-text'), T().protocolBtn]),
     el('button', { type: 'button', onClick: addConsultCard }, [icon('headset'), T().consultBtn]),
@@ -629,13 +645,14 @@ function renderAssistant(item) {
 
   // У оборванного ответа не показываем ничего, что придаёт ему вид законченного.
   if (item.done && !item.broken) {
+    if (item.verified) body.push(Review.renderVerified(item));
     if (item.grounded === false) body.push(renderNotFound());
     if (item.conflicts && item.conflicts.length) body.push(renderConflicts(item.conflicts));
     if (item.sources && item.sources.length) body.push(renderSources(item.sources));
     if (item.support && item.support.length) body.push(renderSupport(item.support));
     if (item.questions && item.questions.length) body.push(renderQuestions(item.questions));
     if (item.escalate || item.local) body.push(renderEscalate());
-    if (!item.local) body.push(renderActions());
+    if (!item.local) body.push(renderActions(item));
   }
 
   return el('div', { class: 'bot' }, [
@@ -686,12 +703,13 @@ function render() {
 
   if (!items.length) col.appendChild(renderGreeting());
 
-  for (const item of items) {
+  for (const [index, item] of items.entries()) {
     if (item.error) { col.appendChild(el('div', { class: 'msg' }, [renderError(item)])); continue; }
     if (item.role === 'user') {
       col.appendChild(el('div', { class: 'msg' }, [el('div', { class: 'bubble-user', text: item.content })]));
     } else if (item.role === 'assistant') {
-      col.appendChild(el('div', { class: 'msg' }, [renderAssistant(item)]));
+      // Номер реплики нужен меню «Уточнить ответ» по правому клику (review.js).
+      col.appendChild(el('div', { class: 'msg', 'data-item': index }, [renderAssistant(item)]));
     }
   }
 
@@ -736,8 +754,8 @@ function applyStatic() {
   input.placeholder = T().placeholder;
   input.setAttribute('aria-label', T().placeholder);
 
-
   paintStatus();
+  Review.applyStatic();
 }
 
 // Языки: доступные переключаются, будущие показаны как «скоро», чтобы было
@@ -773,6 +791,7 @@ function renderLanguages() {
 function switchLanguage(code) {
   if (code === state.lang || state.streaming) return;
   state.lang = code;
+  Review.rememberLanguage(code);
   if (activeChat() && activeChat().title) newChat();
   toggleSettings(false);
   applyStatic();

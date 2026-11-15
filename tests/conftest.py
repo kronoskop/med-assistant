@@ -76,7 +76,12 @@ class FakeLLM:
 
 
 @pytest.fixture(autouse=True)
-def clear_settings_cache():
+def clear_settings_cache(tmp_path, monkeypatch):
+    # База пользователей и уточнений — своя на каждый тест; вход по умолчанию
+    # выключен, его проверяют тесты уточнений.
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("AUTH_REQUIRED", "false")
+    monkeypatch.setenv("ADMIN_PASSWORD", "admin-password")
     get_settings.cache_clear()
     reset_compatibility_cache()
     yield

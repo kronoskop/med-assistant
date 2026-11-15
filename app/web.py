@@ -15,6 +15,9 @@ ASSETS: dict[str, str] = {
     "data.js": "text/javascript; charset=utf-8",
     "topics.js": "text/javascript; charset=utf-8",
     "styles.css": "text/css; charset=utf-8",
+    "review.js": "text/javascript; charset=utf-8",
+    "review-i18n.js": "text/javascript; charset=utf-8",
+    "review.css": "text/css; charset=utf-8",
 }
 
 

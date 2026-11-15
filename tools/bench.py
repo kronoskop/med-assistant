@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import statistics
 import sys
@@ -96,6 +97,12 @@ def chat_once(client: httpx.Client, url: str, question: str) -> dict:
 def run_chat(args) -> list[dict]:
     rows = []
     with httpx.Client(timeout=args.timeout) as client:
+        # Сервер с включённым входом: логин и пароль берутся из BENCH_LOGIN / BENCH_PASSWORD.
+        if os.environ.get("BENCH_LOGIN"):
+            client.post(
+                f"{args.url}/api/v1/auth/login",
+                json={"login": os.environ["BENCH_LOGIN"], "password": os.environ.get("BENCH_PASSWORD", "")},
+            ).raise_for_status()
         for item in _only(load_questions(args.questions, args.lang, args.limit), args.only):
             for attempt in range(args.repeat):
                 try:

@@ -25,6 +25,8 @@ from app.answer import (
 from app.corpus.service import Grounding, Retrieval, Retriever, get_retriever, render_fragments
 from app.llm import Claims, LLMClient, cited_ids, ensure_structured_output, get_llm
 from app.prompt import DISCLAIMER
+from app.review.auth import current_user
+from app.review.verified import Verified, VerifiedAnswers, get_verified_answers
 from app.settings import get_settings
 from app.schemas import UTF8JSONResponse, AppError, ChatMessage, ChatRequest, ChatResponse
 
@@ -62,9 +64,25 @@ async def chat(
     body: ChatRequest,
     llm: LLMClient = Depends(get_llm),
     retriever: Retriever = Depends(get_retriever),
+    verified_answers: VerifiedAnswers = Depends(get_verified_answers),
+    _user: dict = Depends(current_user),
 ):
     started = time.perf_counter()
     question = last_question(body.messages)
+    # Принятый медиками ответ отдаётся дословно, без поиска и без модели.
+    # Только на первый вопрос диалога: смысл последующих зависит от предыстории.
+    if sum(m.role == "user" for m in body.messages) == 1:
+        verified = await asyncio.to_thread(verified_answers, question)
+        if verified is not None:
+            _log_timing(stream=body.stream, verified=verified.refinement_id, total_ms=_ms(started))
+            if body.stream:
+                return StreamingResponse(_sse_verified(verified), media_type="text/event-stream")
+            return ChatResponse(
+                message=ChatMessage(role="assistant", content=verified.text),
+                disclaimer=DISCLAIMER,
+                grounding="verified",
+                verified=verified.payload(),
+            )
     language = question_language(question)
     # Отбор синхронный (эмбеддинг — сетевой запрос): в отдельном потоке он не
     # останавливает обслуживание остальных врачей.
@@ -278,4 +296,20 @@ def _log_timing(**values) -> None:
 async def _sse_refusal(text: str, retrieval: Retrieval) -> AsyncIterator[str]:
     yield f"data: {json.dumps({'text': text}, ensure_ascii=False)}\n\n"
     yield _sources_event(retrieval, Claims())
+    yield "data: [DONE]\n\n"
+
+
+async def _sse_verified(verified: Verified) -> AsyncIterator[str]:
+    yield f"data: {json.dumps({'text': verified.text}, ensure_ascii=False)}\n\n"
+    payload = {
+        "grounded": True,
+        "grounding": "verified",
+        "verified": verified.payload(),
+        "refusal": None,
+        "sources": [],
+        "support": [],
+        "questions": [],
+        "conflicts": [],
+    }
+    yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
     yield "data: [DONE]\n\n"
