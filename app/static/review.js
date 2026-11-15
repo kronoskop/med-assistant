@@ -132,11 +132,16 @@ const Review = (() => {
       },
     }, [flag(state.lang), el('span', { text: state.lang.toUpperCase() }), icon('caret-down')]);
     const box = el('div', { class: 'rv-lang' }, [toggle, list]);
-    box.addEventListener('focusout', (e) => {
-      if (box.contains(e.relatedTarget)) return;
+    // Закрытие по нажатию мимо списка. Не по потере фокуса: Safari не
+    // переводит фокус на кнопку при нажатии мышью, список закрывался раньше,
+    // чем срабатывал выбор языка.
+    const outside = (e) => {
+      if (!box.isConnected) { document.removeEventListener('pointerdown', outside, true); return; }
+      if (box.contains(e.target) || list.hidden) return;
       list.hidden = true;
       toggle.setAttribute('aria-expanded', 'false');
-    });
+    };
+    document.addEventListener('pointerdown', outside, true);
     box.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape' || list.hidden) return;
       list.hidden = true;

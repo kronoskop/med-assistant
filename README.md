@@ -25,7 +25,7 @@ cp .env.example .env
 | Переменная | Значение по умолчанию |
 |---|---|
 | `APP_HOST` | `127.0.0.1` |
-| `APP_PORT` | `8000` |
+| `APP_PORT` | `8001` |
 | `LMSTUDIO_BASE_URL` | `http://127.0.0.1:1234/v1` |
 | `LMSTUDIO_MODEL` | `med-gemma-1.5-4b` |
 | `LMSTUDIO_API_KEY` | `lm-studio` |
@@ -56,7 +56,7 @@ make run
 
 ```bash
 uv sync --extra dev
-uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8001
 ```
 
 Или pip:
@@ -65,7 +65,7 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-uvicorn app.main:app --host 127.0.0.1 --port 8000
+uvicorn app.main:app --host 127.0.0.1 --port 8001
 ```
 
 ## Корпус документов
@@ -136,7 +136,7 @@ uv run python tools/gen_topics.py
 После `make run` интерфейс доступен по адресу:
 
 ```
-http://127.0.0.1:8000/ui
+http://127.0.0.1:8001/ui
 ```
 
 Это клинический справочный ассистент: диалог с потоковым ответом, три языка интерфейса (русский, узбекский, английский), две плотности вёрстки и шесть курируемых тем.
@@ -160,19 +160,19 @@ node tools/sync_design.mjs "путь/к/Чат-бот центра.dc.html"
 Проверка, что API живо (без вызова модели):
 
 ```bash
-curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8001/health
 ```
 
 Проверка, что LM Studio отвечает:
 
 ```bash
-curl http://127.0.0.1:8000/ready
+curl http://127.0.0.1:8001/ready
 ```
 
 Чат без потока:
 
 ```bash
-curl http://127.0.0.1:8000/api/v1/chat \
+curl http://127.0.0.1:8001/api/v1/chat \
   -H 'Content-Type: application/json' \
   -d '{"messages":[{"role":"user","content":"Кратко напомни критерии оценки обезвоживания у ребёнка"}]}'
 ```
@@ -180,7 +180,7 @@ curl http://127.0.0.1:8000/api/v1/chat \
 Поток SSE:
 
 ```bash
-curl -N http://127.0.0.1:8000/api/v1/chat \
+curl -N http://127.0.0.1:8001/api/v1/chat \
   -H 'Content-Type: application/json' \
   -d '{"stream":true,"messages":[{"role":"user","content":"Кратко напомни критерии оценки обезвоживания у ребёнка"}]}'
 ```
@@ -271,4 +271,4 @@ make test
 
 Живая MedGemma для тестов не нужна: LM Studio подменяется.
 
-Служебная схема OpenAPI: `http://127.0.0.1:8000/docs` (для разработчика, не продуктовый UI).
+Служебная схема OpenAPI: `http://127.0.0.1:8001/docs` (для разработчика, не продуктовый UI).
