@@ -165,3 +165,10 @@
   .rv-dialog, .rv-ws { border-radius: 0; max-height: none; height: 100%; }
 }
 .card.verified .card-title { color: var(--ok); }
+
+/* Меню «Настройки»: «Выйти» теперь под ним, панель поднимается на строку выше. */
+.settings-panel { bottom: 124px; }
+.rv-settings-extra { padding-top: 10px; border-top: 1px solid var(--line-soft); }
+.rv-settings-extra .lang-row .icon { font-size: 15px; color: var(--ink-muted); }
+/* Одна вкладка — полоса вкладок не нужна, остаётся только линия под заголовком. */
+.rv-tabs:has(> button:only-child) { height: 0; padding: 0; overflow: hidden; }

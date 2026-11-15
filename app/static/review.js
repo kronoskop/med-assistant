@@ -11,7 +11,7 @@
 
 const Review = (() => {
   const session = { user: null, counts: { queue: 0, unread: 0 }, required: 3 };
-  const view = { open: false, tab: null, items: [], busy: false, form: null };
+  const view = { open: false, group: 'refine', tab: null, items: [], busy: false, form: null };
   const LANG_KEY = 'ui-lang'; // язык интерфейса — не клинические данные
 
   const isMedic = () => !!session.user && session.user.role === 'medic';
@@ -188,6 +188,19 @@ const Review = (() => {
     who.textContent = signedIn() ? user.name + ' · ' + T().roles[user.role] : T().whoami;
     open.hidden = !signedIn();
     out.hidden = !signedIn();
+    document.getElementById('rv-admin').hidden = !isAdmin();
+    document.getElementById('rv-admin-label').textContent = T().adminMenu;
+    // Профиль и параметры живут в меню «Настройки», рядом с языком.
+    const extra = document.getElementById('rv-settings-extra');
+    extra.hidden = !signedIn();
+    const entry = (name, label, tab) => el('button', {
+      class: 'lang-row', type: 'button',
+      onClick: () => { toggleSettings(false); openWorkspace('settings', tab); },
+    }, [icon(name), el('span', { class: 'lang-label', text: label })]);
+    extra.replaceChildren(...(signedIn() ? [
+      entry('user-circle', T().tabProfile, 'profile'),
+      isAdmin() ? entry('gear', T().systemSettings, 'settings') : null,
+    ].filter(Boolean) : []));
     document.getElementById('rv-open-label').textContent = T().workspace;
     document.getElementById('rv-logout-label').textContent = T().logout;
     const total = session.counts.queue + session.counts.unread;
@@ -299,22 +312,26 @@ const Review = (() => {
   }
 
   // ── кабинет ─────────────────────────────────────────────
+  // Три меню боковой панели: уточнения, администрирование, настройки.
   function tabs() {
+    if (view.group === 'admin') return isAdmin() ? ['users'] : [];
+    if (view.group === 'settings') return isAdmin() ? ['profile', 'settings'] : ['profile'];
     const list = [];
     if (isMedic()) list.push('queue', 'mine');
     if (isMedic() || isAdmin()) list.push('accepted');
     list.push('inbox');
-    if (isAdmin()) list.push('users', 'settings');
-    list.push('profile');
     return list;
   }
 
-  const TAB_LABEL = { queue: 'tabQueue', mine: 'tabMine', accepted: 'tabAccepted', inbox: 'tabInbox', users: 'tabUsers', settings: 'tabSettings', profile: 'tabProfile' };
+  const groupTitle = () => (view.group === 'admin' ? T().adminMenu : view.group === 'settings' ? T().settingsTitle : T().workspace);
 
-  function openWorkspace(tab) {
+  const TAB_LABEL = { queue: 'tabQueue', mine: 'tabMine', accepted: 'tabAccepted', inbox: 'tabInbox', users: 'tabUsers', settings: 'systemSettings', profile: 'tabProfile' };
+
+  function openWorkspace(group, tab) {
     view.open = true;
+    view.group = group || 'refine';
     view.form = null;
-    const first = session.counts.unread && !session.counts.queue ? 'inbox' : tabs()[0];
+    const first = view.group === 'refine' && session.counts.unread && !session.counts.queue ? 'inbox' : tabs()[0];
     loadTab(tab || first);
   }
 
@@ -349,9 +366,9 @@ const Review = (() => {
     const old = document.getElementById('rv-workspace');
     const body = el('div', { class: 'rv-ws-body sc' }, view.busy ? [] : renderTab());
     const box = el('div', { id: 'rv-workspace', class: 'rv-overlay' }, [
-      el('div', { class: 'rv-ws', role: 'dialog', 'aria-modal': 'true', 'aria-label': T().workspace }, [
+      el('div', { class: 'rv-ws', role: 'dialog', 'aria-modal': 'true', 'aria-label': groupTitle() }, [
         el('div', { class: 'rv-dialog-head' }, [
-          el('h2', { text: T().workspace }),
+          el('h2', { text: groupTitle() }),
           el('button', { class: 'rv-x', type: 'button', 'aria-label': T().close, onClick: closeWorkspace }, [icon('x')]),
         ]),
         el('div', { class: 'rv-tabs', role: 'tablist' }, tabs().map((tab) => {
@@ -626,7 +643,8 @@ const Review = (() => {
       if (!top) return;
       if (top.id === 'rv-workspace') closeWorkspace(); else top.remove();
     });
-    document.getElementById('rv-open').addEventListener('click', () => openWorkspace());
+    document.getElementById('rv-open').addEventListener('click', () => openWorkspace('refine'));
+    document.getElementById('rv-admin').addEventListener('click', () => openWorkspace('admin'));
     document.getElementById('rv-logout').addEventListener('click', logout);
     refreshMe();
     setInterval(() => { if (signedIn() && !document.hidden) refreshMe(); }, 60000);
