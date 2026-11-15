@@ -219,7 +219,7 @@ async def _sse(
             size += len(text)
             shown.append(text)
             yield f"data: {json.dumps({'text': text}, ensure_ascii=False)}\n\n"
-            if guard.repeated("".join(shown)):
+            if guard.feed(text):
                 # Модель пошла по кругу: дальше будет тот же абзац до потолка длины.
                 await chunks.aclose()
                 break
@@ -249,6 +249,12 @@ async def _sse(
         timing_logger.warning("stream_failed code=%s cause=%s after_chars=%s", code, cause, size)
         yield f"data: {json.dumps({'error': code})}\n\n"
         return
+    finally:
+        # Врач закрыл вкладку или нажал «Стоп»: поток генерации закрывается
+        # сразу, и LM Studio прекращает писать брошенный ответ.
+        close = getattr(chunks, "aclose", None)
+        if close is not None:
+            await close()
     yield _sources_event(retrieval, claims, said, attribution, attribution_best)
     yield "data: [DONE]\n\n"
     if timing:

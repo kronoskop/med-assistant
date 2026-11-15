@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -41,6 +41,9 @@ class Hit:
     fragment: Fragment
     document: Document
     score: float
+    # Вектор фрагмента из индекса: проверка ссылок сравнивает с ним ответ, не
+    # пересчитывая эмбеддинги отобранных фрагментов на каждый вопрос.
+    vector: np.ndarray | None = field(default=None, compare=False, repr=False)
 
 
 class Corpus:
@@ -79,7 +82,7 @@ class Corpus:
             if score < min_score:
                 continue
             fragment = self.fragments[int(position)]
-            hits.append(Hit(fragment, self.documents[fragment.document_id], score))
+            hits.append(Hit(fragment, self.documents[fragment.document_id], score, self.vectors[position]))
         return hits
 
 
@@ -93,7 +96,8 @@ class Corpus:
         cosine = self.vectors @ query_vector
         order = fuse(cosine, self.lexical.scores(question), depth=depth)[:top_k]
         return [
-            Hit(self.fragments[p], self.documents[self.fragments[p].document_id], float(cosine[p])) for p in order
+            Hit(self.fragments[p], self.documents[self.fragments[p].document_id], float(cosine[p]), self.vectors[p])
+            for p in order
         ]
 
 

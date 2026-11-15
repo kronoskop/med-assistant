@@ -357,3 +357,44 @@ def test_rewriter_handles_long_number_lists(step):
     rewriter = MarkerRewriter(HITS)
     out = "".join(rewriter.feed(raw[i : i + step]) for i in range(0, len(raw), step)) + rewriter.flush()
     assert out == "Нет данных [a:ru:1:0][b:ru:1:0][b:ru:1:0][a:ru:1:0][b:ru:1:0][a:ru:1:0]."
+
+
+def test_citation_check_reuses_index_vectors(monkeypatch):
+    """Фрагменты уже посчитаны в индексе: проверка ссылок берёт их векторы
+    оттуда и прогоняет модель только по предложениям ответа."""
+    import dataclasses
+
+    from app.corpus.service import citation_support
+
+    with_vectors = (
+        dataclasses.replace(A, vector=np.asarray([1.0, 0.0], dtype=np.float32)),
+        dataclasses.replace(B, vector=np.asarray([0.0, 1.0], dtype=np.float32)),
+    )
+    embedded: list[str] = []
+
+    def fake(texts, settings, prefix=""):
+        embedded.extend(texts)
+        rows = [[1.0, 0.0] if "емоглобин" in t else [0.0, 1.0] for t in texts]
+        return embed.normalize(np.asarray(rows, dtype=np.float32))
+
+    def no_passages(texts, settings):
+        raise AssertionError("векторы фрагментов пересчитаны")
+
+    monkeypatch.setattr(embed, "embed_texts", fake)
+    monkeypatch.setattr(embed, "embed_passages", no_passages)
+    s = Settings(_env_file=None, attribution_min_score=0.9)
+    text = "Анемия — гемоглобин ниже 110 г/л [a:ru:1:0][b:ru:1:0]."
+    assert citation_support(text, with_vectors, s) == 1.0
+    assert embedded == ["Анемия — гемоглобин ниже 110 г/л"]  # одно предложение — один прогон
+    ids, best = attribute("Гемоглобин ниже 110 г/л считается анемией.", with_vectors, s)
+    assert ids == ["a:ru:1:0"] and best == 1.0
+
+
+def test_repeat_guard_sees_sentences_split_across_chunks():
+    from app.answer import RepeatGuard
+
+    guard = RepeatGuard()
+    sentence = "Гемоглобин ниже 110 г/л у беременной считается анемией."
+    pieces = [sentence[:20], sentence[20:] + " ", "Другое длинное предложение про УЗИ плода.", " " + sentence[:5]]
+    assert not any(guard.feed(p) for p in pieces)
+    assert guard.feed(sentence[5:] + " ")

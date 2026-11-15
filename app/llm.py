@@ -450,16 +450,36 @@ class LLMClient:
         values = self._inputs(messages, fragments)
         clarify = self._start_clarify(values)
 
+        # Врач остановил ответ, ушёл со страницы или RepeatGuard заметил круг:
+        # генерацию надо прервать и в LM Studio, а не только перестать читать.
+        # Иначе модель дописывает брошенный ответ до потолка длины, и следующий
+        # вопрос ждёт её в очереди.
+        stop = threading.Event()
+
         def run() -> None:
+            events = program.streaming_forward(self._ai, self._answer_inputs(values, language))
             try:
-                for event in program.streaming_forward(self._ai, self._answer_inputs(values, language)):
+                for event in events:
+                    if stop.is_set():
+                        return
                     loop.call_soon_threadsafe(queue.put_nowait, ("event", event))
                 loop.call_soon_threadsafe(queue.put_nowait, ("done", None))
             except Exception as exc:
-                loop.call_soon_threadsafe(queue.put_nowait, ("error", exc))
+                if not stop.is_set():
+                    loop.call_soon_threadsafe(queue.put_nowait, ("error", exc))
+            finally:
+                # Закрытие генератора доходит до HTTP-ответа: соединение с
+                # LM Studio рвётся, и она прекращает генерацию.
+                close = getattr(events, "close", None)
+                if close is not None:
+                    close()
 
         threading.Thread(target=run, daemon=True).start()
-        first = await queue.get()
+        try:
+            first = await queue.get()
+        except BaseException:
+            stop.set()  # запрос отменён до первого токена
+            raise
         if first[0] == "error":
             if clarify is not None:
                 clarify.cancel()
@@ -498,6 +518,7 @@ class LLMClient:
                     if chunk:
                         yield chunk
             finally:
+                stop.set()
                 if clarify is not None and not clarify.done():
                     clarify.cancel()
 
