@@ -1,7 +1,7 @@
 .PHONY: install run test bench bench-retrieval
 
 UVICORN_HOST ?= 127.0.0.1
-UVICORN_PORT ?= 8000
+UVICORN_PORT ?= 8001
 
 install:
 	uv sync --extra dev

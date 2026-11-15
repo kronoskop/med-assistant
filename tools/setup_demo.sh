@@ -9,7 +9,8 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-PORT="${APP_PORT:-8000}"
+# Порт демо постоянный: адрес интерфейса не меняется от запуска к запуску.
+PORT="${APP_PORT:-8001}"
 LMS_URL="${LMSTUDIO_BASE_URL:-http://127.0.0.1:1234/v1}"
 PID_FILE=".demo.pid"
 LOG_FILE="demo.log"
@@ -97,15 +98,18 @@ fi
 port_free() {
   python3 -c 'import socket,sys; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(("127.0.0.1", int(sys.argv[1])))' "$1" 2>/dev/null
 }
-# Порт может быть занят другой программой: тогда берём следующий свободный,
-# иначе на проверку ответила бы чужая служба, а не наш сервер.
+# Порт занят: если это наш же сервер, оставшийся от прошлого запуска без
+# записи в $PID_FILE, останавливаем его. Чужую программу не трогаем и на другой
+# порт молча не уходим: адрес демо должен оставаться прежним.
 if ! port_free "$PORT"; then
-  BUSY="$PORT"
-  for candidate in $(seq $((PORT + 1)) $((PORT + 20))); do
-    if port_free "$candidate"; then PORT="$candidate"; break; fi
+  for pid in $(lsof -nP -t -iTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true); do
+    if ps -o command= -p "$pid" 2>/dev/null | grep -q "uvicorn app.main:app"; then
+      echo "Останавливаю прежний сервер демо (процесс $pid)."
+      kill "$pid" 2>/dev/null || true
+    fi
   done
-  [[ "$PORT" != "$BUSY" ]] || fail "Порты $BUSY–$((BUSY + 20)) заняты. Задайте свободный: APP_PORT=<порт> ./tools/setup_demo.sh"
-  echo "Порт $BUSY занят другой программой — запускаю на $PORT."
+  for _ in 1 2 3 4 5; do port_free "$PORT" && break; sleep 1; done
+  port_free "$PORT" || fail "Порт $PORT занят другой программой. Освободите его (кто занял: lsof -nP -iTCP:$PORT -sTCP:LISTEN) или задайте другой: APP_PORT=<порт> ./tools/setup_demo.sh"
 fi
 nohup uv run uvicorn app.main:app --host 127.0.0.1 --port "$PORT" >"$LOG_FILE" 2>&1 &
 echo $! >"$PID_FILE"

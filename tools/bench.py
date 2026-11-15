@@ -12,7 +12,7 @@
 Ответы модели в отчёт не пишутся целиком: только длина, признак привязки и
 документы сносок. Набор вопросов — черновик, эталон проверяет врач.
 
-    uv run python tools/bench.py chat --url http://127.0.0.1:8000
+    uv run python tools/bench.py chat --url http://127.0.0.1:8001
     uv run python tools/bench.py retrieval
 """
 
@@ -224,7 +224,7 @@ def _progress(row: dict) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("mode", choices=["chat", "retrieval"])
-    parser.add_argument("--url", default="http://127.0.0.1:8000")
+    parser.add_argument("--url", default="http://127.0.0.1:8001")
     parser.add_argument("--questions", type=Path, default=QUESTIONS)
     parser.add_argument("--lang", choices=["ru", "uz", "en"])
     parser.add_argument("--limit", type=int)
