@@ -129,6 +129,8 @@ def test_stream_collects_citations_from_text_and_clarifications():
         claims = Claims()
         stream = await llm.start_chat_stream([ChatMessage(role="user", content="вопрос")], "ф", claims)
         text = "".join([part async for part in stream])
+        assert claims.pending is not None, "уточнения не держат конец потока"
+        await claims.settle()
         return text, claims
 
     text, claims = asyncio.run(run())

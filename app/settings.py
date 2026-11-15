@@ -26,9 +26,12 @@ class Settings(BaseSettings):
     repeat_penalty: float = 1.1
     clarify_max_tokens: int = 400
     # Уточнения и противоречия считаются отдельным коротким запросом:
-    # parallel — вместе с ответом, after — после него (если сервер модели
-    # не обрабатывает два запроса одновременно), off — не считаются вовсе.
-    clarify_mode: Literal["parallel", "after", "off"] = "parallel"
+    # after — после ответа, parallel — вместе с ним, off — не считаются вовсе.
+    # Замер на kmm 2026-11-15 (Gemma 4 E4B, LM Studio): при parallel запрос
+    # уточнений отнимает у ответа модель, и первое слово появлялось через 5,4 с;
+    # при after — через 3,0 с при том же качестве. Сноски уходят врачу сразу
+    # после текста, уточнения — следующим кадром.
+    clarify_mode: Literal["parallel", "after", "off"] = "after"
     # Корпус документов: файлы вне git, модель эмбеддингов — та же локальная
     # LM Studio, что и генерация.
     corpus_dir: str = "corpus"

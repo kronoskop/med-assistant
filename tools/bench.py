@@ -55,6 +55,7 @@ def _only(items: list[dict], only: str | None) -> list[dict]:
 def chat_once(client: httpx.Client, url: str, question: str) -> dict:
     started = time.perf_counter()
     first: float | None = None
+    sources_at: float | None = None
     text = ""
     final: dict = {}
     with client.stream(
@@ -78,10 +79,15 @@ def chat_once(client: httpx.Client, url: str, question: str) -> dict:
                 text += data["text"]
             elif "sources" in data:
                 final = data
+                sources_at = time.perf_counter()
+            elif data.get("clarify"):
+                # Уточнения приходят отдельным кадром после сносок.
+                final = {**final, "questions": data.get("questions", []), "conflicts": data.get("conflicts", [])}
             elif "error" in data:
                 return {"error": f"stream:{data['error']}", "total_ms": _ms(started), "text": text}
     return {
         "first_token_ms": round((first - started) * 1000) if first else None,
+        "sources_ms": round((sources_at - started) * 1000) if sources_at else None,
         "total_ms": _ms(started),
         "answer_chars": len(text),
         "grounded": bool(final.get("grounded")),
@@ -170,20 +176,22 @@ def summarize(rows: list[dict], mode: str) -> str:
     lines = []
     if mode == "chat":
         lines.append(
-            f"{'язык':<5} {'n':>3} {'1-е слово p50':>14} {'p90':>7} {'всего p50':>10} {'p90':>7} "
+            f"{'язык':<5} {'n':>3} {'1-е слово p50':>14} {'p90':>7} {'сноски p50':>11} {'всего p50':>10} {'p90':>7} "
             f"{'верно':>6} {'ошибки':>7} {'ссылки модели':>14}"
         )
         for lang, items in groups.items():
             first = [r["first_token_ms"] for r in items if r.get("first_token_ms")]
             total = [r["total_ms"] for r in items if "error" not in r]
+            sources = [r["sources_ms"] for r in items if r.get("sources_ms")]
             ok = sum(1 for r in items if r.get("ok"))
             by_model = sum(1 for r in items if r.get("ok") and r.get("attribution") == "model" and r["kind"] == "grounded")
             errors = sum(1 for r in items if "error" in r)
             lines.append(
-                f"{lang:<5} {len(items):>3} {_p(first, 50):>14} {_p(first, 90):>7} "
+                f"{lang:<5} {len(items):>3} {_p(first, 50):>14} {_p(first, 90):>7} {_p(sources, 50):>11} "
                 f"{_p(total, 50):>10} {_p(total, 90):>7} {ok:>3}/{len(items):<3}{errors:>6} {by_model:>14}"
             )
         lines.append("«верно»: на профильный вопрос есть сноска на ожидаемый документ, на посторонний — отказ. Время в мс.")
+        lines.append("«сноски»: ответ со сносками готов; «всего» — вместе с уточнениями.")
         lines.append("«ссылки модели»: из верных профильных — сколько со ссылками, поставленными самой моделью, а не подобранными сервером.")
     else:
         lines.append(f"{'язык':<5} {'n':>3} {'попал в выдачу':>15} {'на 1-м месте':>13} {'мс p50':>8}")
