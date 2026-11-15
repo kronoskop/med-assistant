@@ -262,3 +262,43 @@ def test_existing_response_fields_are_untouched(client):
     for field in ("message", "disclaimer", "grounded", "grounding", "sources", "support"):
         assert field in body, f"поле {field} пропало из ответа"
     assert body["message"]["role"] == "assistant"
+
+
+# ── уточнения, досчитанные после ответа ───────────────────────────────────
+
+
+class _LateClarify(FakeLLM):
+    """Уточнения ещё считаются, когда текст ответа уже дописан."""
+
+    def __init__(self, questions):
+        super().__init__(stream_parts=["Оценивают срок гестации [doc:ru:9:0]."])
+        self.late = questions
+
+    async def start_chat_stream(self, messages, fragments="", claims=None, language=None):
+        import asyncio
+
+        stream = await super().start_chat_stream(messages, fragments, claims, language)
+
+        async def gen():
+            async for part in stream:
+                yield part
+
+            async def clarify():
+                await asyncio.sleep(0)
+                return tuple(self.late), (), 5.0
+
+            claims.pending = asyncio.ensure_future(clarify())
+
+        return gen()
+
+
+def test_sources_come_before_late_clarifications(client):
+    hit = make_hit(fragment_id="doc:ru:9:0", text="Оценивают срок гестации и анамнез.")
+    app.dependency_overrides[get_llm] = lambda: _LateClarify([_ask("doc:ru:9:0")])
+    app.dependency_overrides[get_retriever] = lambda: FakeRetriever(grounded(hit))
+    frames = _frames(_post(client, stream=True))
+    kinds = ["text" if "text" in f else "sources" if "sources" in f else "clarify" for f in frames]
+    assert kinds == ["text", "sources", "clarify"], "сноски не ждут уточнений"
+    assert frames[1]["grounded"] is True and frames[1]["questions"] == []
+    assert [q["question"] for q in frames[2]["questions"]] == ["Каков срок гестации?"]
+    assert frames[2]["questions"][0]["source"]["id"] == "doc:ru:9:0"

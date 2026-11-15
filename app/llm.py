@@ -72,6 +72,26 @@ class Claims:
     conflicts: list[Any] = field(default_factory=list)
     reasoning_chars: int = 0
     clarify_ms: float | None = None
+    # Уточнения, которые ещё считаются, когда текст ответа уже дописан: сноски
+    # уходят врачу сразу, а уточнения — отдельным кадром, когда будут готовы.
+    pending: asyncio.Future | None = field(default=None, repr=False, compare=False)
+
+    async def settle(self) -> bool:
+        """Дожидается уточнений, если они ещё считаются. True — они были в пути."""
+        task, self.pending = self.pending, None
+        if task is None:
+            return False
+        questions, conflicts, clarify_ms = await task
+        self.questions.extend(questions)
+        self.conflicts.extend(conflicts)
+        self.clarify_ms = clarify_ms
+        return True
+
+    def abandon(self) -> None:
+        """Врач ушёл, не дождавшись уточнений: считать их дальше незачем."""
+        task, self.pending = self.pending, None
+        if task is not None and not task.done():
+            task.cancel()
 
 
 _JSON_TYPES = {
@@ -486,6 +506,7 @@ class LLMClient:
             raise _map_ax_error(first[1]) from first[1]
 
         async def tokens() -> AsyncIterator[str]:
+            nonlocal clarify
             pending: list[tuple[str, object]] = [first]
             reader = AnswerStream()
             try:
@@ -506,13 +527,13 @@ class LLMClient:
                         leftover = answer[reader.emitted :]
                         if leftover:
                             yield leftover
-                        questions, conflicts, clarify_ms = await self._finish_clarify(clarify, values)
                         if claims is not None:
                             claims.source_ids.extend(cited_ids(answer))
-                            claims.questions.extend(questions)
-                            claims.conflicts.extend(conflicts)
                             claims.reasoning_chars = self.reasoning_chars
-                            claims.clarify_ms = clarify_ms
+                            # Поток кончается сразу: ответ и сноски врач получает,
+                            # не дожидаясь уточнений (см. Claims.settle).
+                            claims.pending = asyncio.ensure_future(self._finish_clarify(clarify, values))
+                            clarify = None  # теперь им владеет claims.pending
                         return
                     chunk = reader.feed(_content_from_event(payload))
                     if chunk:

@@ -77,6 +77,9 @@ set_env LMSTUDIO_MODEL "$CHAT_MODEL"
 [[ -n "$EMBED_MODEL" ]] && set_env EMBEDDING_MODEL "$EMBED_MODEL"
 # Прежний потолок из старого .env.example: зациклившийся ответ держал сервер минуту.
 grep -qE '^ANSWER_MAX_TOKENS=(1200|600)$' .env && set_env ANSWER_MAX_TOKENS 800
+# Прежнее значение из .env.example: уточнения одновременно с ответом задерживали
+# первое слово почти вдвое (замер на kmm 2026-11-15).
+grep -qE '^CLARIFY_MODE=parallel$' .env && set_env CLARIFY_MODE after
 echo ".env обновлён."
 
 say "4/6 Зависимости"

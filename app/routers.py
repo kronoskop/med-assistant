@@ -212,6 +212,16 @@ def _sources_event(
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
+def _clarify_event(retrieval: Retrieval, claims: Claims, said: str = "") -> str:
+    """Уточнения и противоречия, досчитанные после кадра со сносками."""
+    payload = {
+        "clarify": True,
+        "questions": [q.model_dump() for q in confirmed_questions(claims.questions, retrieval.hits)],
+        "conflicts": [c.model_dump() for c in confirmed_conflicts(claims.conflicts, said)],
+    }
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
 async def _sse(
     chunks: AsyncIterator[str],
     claims: Claims,
@@ -273,7 +283,13 @@ async def _sse(
         close = getattr(chunks, "aclose", None)
         if close is not None:
             await close()
-    yield _sources_event(retrieval, claims, said, attribution, attribution_best)
+    try:
+        yield _sources_event(retrieval, claims, said, attribution, attribution_best)
+        sources_ms = _ms(timing["started"]) if timing else None
+        if await claims.settle():
+            yield _clarify_event(retrieval, claims, said)
+    finally:
+        claims.abandon()  # врач ушёл до уточнений
     yield "data: [DONE]\n\n"
     if timing:
         answer_ms = _ms(timing["started"])
@@ -281,6 +297,7 @@ async def _sse(
             stream=True,
             retrieval_ms=timing["retrieval_ms"],
             first_token_ms=first_ms,
+            sources_ms=sources_ms,
             total_ms=answer_ms,
             clarify_ms=claims.clarify_ms,
             reasoning_chars=claims.reasoning_chars,

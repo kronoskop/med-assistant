@@ -182,6 +182,8 @@ async function ask(question) {
 
   controller = new AbortController();
   let sawDone = false;
+  // Кадр со сносками пришёл: ответ закончен, дальше могут прийти только уточнения.
+  let sawSources = false;
 
   try {
     const response = await fetch('/api/v1/chat', {
@@ -232,8 +234,15 @@ async function ask(question) {
             if (parsed.text) {
               reply.content += parsed.text;
               paintStream(reply.content);
+            } else if (parsed.clarify) {
+              // Уточнения досчитаны после ответа и приходят отдельным кадром.
+              reply.questions = parsed.questions || [];
+              reply.conflicts = parsed.conflicts || [];
+              render();
             } else if (parsed.sources !== undefined) {
-              // Последний кадр перед [DONE]: подтверждённые фрагменты и подкрепление.
+              // Кадр после текста: подтверждённые фрагменты и подкрепление.
+              // Показываются сразу, не дожидаясь уточнений.
+              sawSources = true;
               reply.sources = parsed.sources;
               reply.support = parsed.support || [];
               reply.questions = parsed.questions || [];
@@ -243,6 +252,9 @@ async function ask(question) {
               if (parsed.grounded === false && parsed.refusal) reply.content = parsed.refusal;
               reply.grounding = parsed.grounding;
               reply.verified = parsed.verified || null;
+              reply.streaming = false;
+              reply.done = true;
+              render();
             }
           } catch (_) { /* неполный кадр — придёт в следующем чтении */ }
         }
@@ -250,6 +262,13 @@ async function ask(question) {
     }
     setStatus('ready');
   } catch (err) {
+    if (sawSources) {
+      // Оборвались только уточнения: ответ со сносками уже полный.
+      reply.streaming = false;
+      reply.done = true;
+      finish();
+      return;
+    }
     if (err && err.name === 'AbortError') {
       reply.streaming = false;
       reply.stopped = true;
@@ -265,7 +284,7 @@ async function ask(question) {
   }
 
   reply.streaming = false;
-  if (sawDone) {
+  if (sawDone || sawSources) {
     reply.done = true;
   } else {
     // Поток кончился, не дойдя до признака завершения: ошибка возникла уже
