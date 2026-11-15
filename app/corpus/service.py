@@ -155,10 +155,10 @@ def attribute(text: str, hits: tuple[Hit, ...], settings: Settings | None = None
     if not sentences or not prose:
         return [], 0.0
 
-    from app.corpus.embed import embed_passages, embed_texts
+    from app.corpus.embed import embed_texts
 
     claims = embed_texts(sentences, settings, prefix=settings.embedding_query_prefix)
-    passages = embed_passages([hit.fragment.text for hit in prose], settings)
+    passages = _passage_vectors(prose, settings)
     scores = claims @ passages.T
     ids: list[str] = []
     for row in scores:
@@ -194,7 +194,7 @@ def citation_support(text: str, hits: tuple[Hit, ...], settings: Settings | None
         else:
             sentences.append((plain, ids))
     pairs = [
-        (plain, by_id[i].fragment.text)
+        (plain, by_id[i])
         for plain, ids in sentences
         if len(plain) >= _MIN_SENTENCE
         for i in dict.fromkeys(ids)
@@ -202,11 +202,31 @@ def citation_support(text: str, hits: tuple[Hit, ...], settings: Settings | None
     if not pairs:
         return None
 
-    from app.corpus.embed import embed_passages, embed_texts
+    from app.corpus.embed import embed_texts
 
-    claims = embed_texts([c for c, _ in pairs], settings, prefix=settings.embedding_query_prefix)
-    passages = embed_passages([f for _, f in pairs], settings)
+    # Предложение со ссылками на два фрагмента встречается в парах дважды:
+    # каждое предложение считается один раз.
+    plains = list(dict.fromkeys(plain for plain, _ in pairs))
+    vectors = embed_texts(plains, settings, prefix=settings.embedding_query_prefix)
+    claims = vectors[[plains.index(plain) for plain, _ in pairs]]
+    passages = _passage_vectors([hit for _, hit in pairs], settings)
     return round(float((claims * passages).sum(axis=1).max()), 3)
+
+
+def _passage_vectors(hits: list[Hit], settings: Settings):
+    """Векторы фрагментов: из индекса, если отбор их приложил, иначе — расчёт.
+
+    В индексе они посчитаны той же моделью и с тем же префиксом passage
+    (`index.load` не открывает индекс другой модели), так что пересчёт дал бы
+    те же числа ценой прогона модели на каждый вопрос.
+    """
+    import numpy as np
+
+    if hits and all(hit.vector is not None for hit in hits):
+        return np.stack([hit.vector for hit in hits])
+    from app.corpus.embed import embed_passages
+
+    return embed_passages([hit.fragment.text for hit in hits], settings)
 
 
 class Retriever:

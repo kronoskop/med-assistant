@@ -454,3 +454,40 @@ def test_reasoning_never_reaches_the_access_log(caplog):
 
 def test_reasoning_is_not_part_of_the_answer():
     assert REASONING not in _complete_with_reasoning(log_model_reasoning=True).text
+
+
+def test_abandoned_stream_stops_generation_upstream():
+    """Брошенный поток (кнопка «Стоп», круг в ответе) рвёт соединение с LM Studio,
+    а не дочитывает генерацию до потолка длины в фоне."""
+    import threading
+
+    closed = threading.Event()
+    sent = []
+
+    def chunk(text: str) -> bytes:
+        delta = json.dumps({"choices": [{"index": 0, "delta": {"content": text}}]})
+        return f"data: {delta}\n\n".encode()
+
+    def body():
+        try:
+            yield chunk('{"answer": "')
+            for i in range(10_000):
+                sent.append(i)
+                yield chunk("слово ")
+        finally:
+            closed.set()
+
+    def transport(call: dict):
+        assert call.get("stream")
+        return body()
+
+    async def run():
+        llm = LLMClient(_settings(clarify_mode="off"), transport=transport)
+        stream = await llm.start_chat_stream([ChatMessage(role="user", content="вопрос")])
+        async for _ in stream:
+            break
+        await stream.aclose()
+        return await asyncio.to_thread(closed.wait, 5)
+
+    assert _run(run()), "соединение с моделью не закрыто"
+    assert len(sent) < 10_000

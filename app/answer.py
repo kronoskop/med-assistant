@@ -248,19 +248,29 @@ class MarkerRewriter:
 
 class RepeatGuard:
     """Замечает, что ответ пошёл по кругу: законченное предложение длиной от
-    30 знаков слово в слово повторило уже написанное."""
+    30 знаков слово в слово повторило уже написанное.
+
+    Получает поток кусками и разбирает только новое: прежде весь ответ
+    склеивался и делился на предложения заново на каждом токене.
+    """
 
     _END = re.compile(r"(?<=[.!?…])\s+")
 
     def __init__(self) -> None:
-        self.checked = 0
+        self.tail = ""  # предложение, которое ещё пишется
+        self.seen: set[str] = set()
 
-    def repeated(self, text: str) -> bool:
-        sentences = [_comparable(s) for s in self._END.split(text)[:-1]]  # последнее ещё пишется
-        done = [s for s in sentences if len(s) >= 30]
-        fresh = len(done) > self.checked
-        self.checked = len(done)
-        return fresh and done[-1] in done[:-1]
+    def feed(self, chunk: str) -> bool:
+        parts = self._END.split(self.tail + chunk)
+        self.tail = parts.pop()
+        looped = False
+        for sentence in parts:
+            key = _comparable(sentence)
+            if len(key) < 30:
+                continue
+            looped = looped or key in self.seen
+            self.seen.add(key)
+        return looped
 
 
 def weave_citations(text: str, hits: tuple[Hit, ...]) -> tuple[str, list[SourceFragment]]:
