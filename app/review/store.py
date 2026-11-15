@@ -1,0 +1,623 @@
+"""Хранилище пользователей, уточнений и голосов — один файл SQLite.
+
+Отдельного сервера базы нет: демо живёт на одной машине, а записей — сотни.
+Соединение открывается на каждую операцию: это микросекунды, зато нет общего
+состояния между потоками.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+import secrets
+import sqlite3
+import time
+from contextlib import contextmanager
+from pathlib import Path
+
+import numpy as np
+
+from app.schemas import AppError
+
+ROLES = ("admin", "medic", "observer")
+DEFAULT_CONFIRMATIONS = 3
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY,
+    login TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sessions (
+    token_hash TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    expires_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS refinements (
+    id INTEGER PRIMARY KEY,
+    question TEXT NOT NULL,
+    question_norm TEXT NOT NULL,
+    history TEXT NOT NULL DEFAULT '[]',
+    model_answer TEXT NOT NULL DEFAULT '',
+    text TEXT NOT NULL,
+    language TEXT NOT NULL DEFAULT '',
+    author_id INTEGER NOT NULL REFERENCES users(id),
+    status TEXT NOT NULL DEFAULT 'pending',
+    parent_id INTEGER REFERENCES refinements(id),
+    embedding BLOB,
+    embedding_model TEXT NOT NULL DEFAULT '',
+    created_at REAL NOT NULL,
+    decided_at REAL
+);
+CREATE INDEX IF NOT EXISTS refinements_status ON refinements(status);
+CREATE TABLE IF NOT EXISTS votes (
+    refinement_id INTEGER NOT NULL REFERENCES refinements(id),
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    agree INTEGER NOT NULL,
+    comment TEXT NOT NULL DEFAULT '',
+    created_at REAL NOT NULL,
+    PRIMARY KEY (refinement_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS proposals (
+    id INTEGER PRIMARY KEY,
+    refinement_id INTEGER NOT NULL REFERENCES refinements(id),
+    author_id INTEGER NOT NULL REFERENCES users(id),
+    text TEXT NOT NULL,
+    comment TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at REAL NOT NULL,
+    decided_at REAL
+);
+CREATE TABLE IF NOT EXISTS notifications (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    kind TEXT NOT NULL,
+    refinement_id INTEGER,
+    proposal_id INTEGER,
+    actor_id INTEGER,
+    created_at REAL NOT NULL,
+    read_at REAL
+);
+CREATE INDEX IF NOT EXISTS notifications_user ON notifications(user_id, read_at);
+"""
+
+
+def normalize_question(text: str) -> str:
+    """Один и тот же вопрос с другим регистром, пробелами и знаком в конце."""
+    return re.sub(r"[\s\W_]+", " ", text.casefold(), flags=re.UNICODE).strip()
+
+
+def hash_password(password: str, salt: bytes | None = None) -> str:
+    salt = salt or secrets.token_bytes(16)
+    digest = hashlib.scrypt(password.encode(), salt=salt, n=2**14, r=8, p=1, dklen=32)
+    return f"scrypt${salt.hex()}${digest.hex()}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    try:
+        _, salt, _ = stored.split("$")
+    except ValueError:
+        return False
+    return secrets.compare_digest(hash_password(password, bytes.fromhex(salt)), stored)
+
+
+def _token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _error(status: int, code: str, message: str) -> AppError:
+    return AppError(status, code, message)
+
+
+class Store:
+    def __init__(self, path: Path | str) -> None:
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with self._db() as db:
+            db.executescript(_SCHEMA)
+
+    @contextmanager
+    def _db(self):
+        db = sqlite3.connect(self.path, timeout=10)
+        db.row_factory = sqlite3.Row
+        db.execute("PRAGMA foreign_keys = ON")
+        try:
+            with db:  # одна транзакция на операцию
+                yield db
+        finally:
+            db.close()
+
+    # ── пользователи ──────────────────────────────────────
+    @staticmethod
+    def _user(row) -> dict:
+        return {
+            "id": row["id"],
+            "login": row["login"],
+            "name": row["name"],
+            "role": row["role"],
+            "active": bool(row["active"]),
+        }
+
+    def has_users(self) -> bool:
+        with self._db() as db:
+            return db.execute("SELECT 1 FROM users LIMIT 1").fetchone() is not None
+
+    def list_users(self) -> list[dict]:
+        with self._db() as db:
+            return [self._user(r) for r in db.execute("SELECT * FROM users ORDER BY id")]
+
+    def create_user(self, login: str, name: str, role: str, password: str) -> dict:
+        login, name = login.strip(), name.strip()
+        self._check_user_fields(login=login, name=name, role=role, password=password)
+        with self._db() as db:
+            try:
+                cursor = db.execute(
+                    "INSERT INTO users (login, name, role, password_hash, created_at) VALUES (?, ?, ?, ?, ?)",
+                    (login, name, role, hash_password(password), time.time()),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise _error(409, "login_taken", "Такой логин уже есть") from exc
+            return self._user(db.execute("SELECT * FROM users WHERE id = ?", (cursor.lastrowid,)).fetchone())
+
+    @staticmethod
+    def _check_user_fields(*, login=None, name=None, role=None, password=None) -> None:
+        if login is not None and not re.fullmatch(r"[\w.@-]{2,64}", login):
+            raise _error(422, "bad_login", "Логин: 2–64 символа, буквы, цифры, точка, дефис")
+        if name is not None and not 1 <= len(name) <= 120:
+            raise _error(422, "bad_name", "Укажите имя")
+        if role is not None and role not in ROLES:
+            raise _error(422, "bad_role", "Неизвестная роль")
+        if password is not None and len(password) < 8:
+            raise _error(422, "weak_password", "Пароль не короче 8 символов")
+
+    def update_user(self, user_id: int, *, name=None, role=None, active=None, password=None) -> dict:
+        self._check_user_fields(name=name.strip() if name is not None else None, role=role, password=password)
+        with self._db() as db:
+            row = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+            if row is None:
+                raise _error(404, "not_found", "Не найдено")
+            loses_admin = row["role"] == "admin" and row["active"] and (
+                (role is not None and role != "admin") or active is False
+            )
+            if loses_admin:
+                others = db.execute(
+                    "SELECT COUNT(*) FROM users WHERE role = 'admin' AND active = 1 AND id != ?", (user_id,)
+                ).fetchone()[0]
+                if not others:
+                    raise _error(409, "last_admin", "Нельзя оставить систему без администратора")
+            if name is not None:
+                db.execute("UPDATE users SET name = ? WHERE id = ?", (name.strip(), user_id))
+            if role is not None:
+                db.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
+            if active is not None:
+                db.execute("UPDATE users SET active = ? WHERE id = ?", (int(active), user_id))
+            if password is not None:
+                db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(password), user_id))
+            if password is not None or active is False:
+                # Сброшенный пароль и отключение выбивают открытые сеансы.
+                db.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+            return self._user(db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone())
+
+    def change_password(self, user_id: int, current: str, new: str, keep_token: str = "") -> None:
+        self._check_user_fields(password=new)
+        with self._db() as db:
+            row = db.execute("SELECT password_hash FROM users WHERE id = ?", (user_id,)).fetchone()
+            if row is None or not verify_password(current, row["password_hash"]):
+                raise _error(403, "bad_credentials", "Неверный текущий пароль")
+            db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(new), user_id))
+            db.execute(
+                "DELETE FROM sessions WHERE user_id = ? AND token_hash != ?", (user_id, _token_hash(keep_token))
+            )
+
+    # ── сеансы ────────────────────────────────────────────
+    def login(self, login: str, password: str, ttl_seconds: float) -> tuple[str, dict] | None:
+        with self._db() as db:
+            row = db.execute("SELECT * FROM users WHERE login = ?", (login.strip(),)).fetchone()
+            if row is None or not row["active"] or not verify_password(password, row["password_hash"]):
+                return None
+            token = secrets.token_urlsafe(32)
+            now = time.time()
+            db.execute("DELETE FROM sessions WHERE expires_at < ?", (now,))
+            db.execute(
+                "INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)",
+                (_token_hash(token), row["id"], now + ttl_seconds),
+            )
+            return token, self._user(row)
+
+    def session_user(self, token: str) -> dict | None:
+        if not token:
+            return None
+        with self._db() as db:
+            row = db.execute(
+                "SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id "
+                "WHERE s.token_hash = ? AND s.expires_at > ? AND u.active = 1",
+                (_token_hash(token), time.time()),
+            ).fetchone()
+            return self._user(row) if row else None
+
+    def logout(self, token: str) -> None:
+        with self._db() as db:
+            db.execute("DELETE FROM sessions WHERE token_hash = ?", (_token_hash(token),))
+
+    # ── настройки ─────────────────────────────────────────
+    def required_confirmations(self) -> int:
+        with self._db() as db:
+            return self._required(db)
+
+    @staticmethod
+    def _required(db) -> int:
+        row = db.execute("SELECT value FROM config WHERE key = 'required_confirmations'").fetchone()
+        return int(row["value"]) if row else DEFAULT_CONFIRMATIONS
+
+    def set_required_confirmations(self, value: int) -> int:
+        if not 1 <= value <= 50:
+            raise _error(422, "bad_value", "Число подтверждений: от 1 до 50")
+        with self._db() as db:
+            db.execute(
+                "INSERT INTO config (key, value) VALUES ('required_confirmations', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (str(value),),
+            )
+            # Порог снизили — ожидающие, которым теперь хватает голосов, принимаются.
+            for row in db.execute("SELECT id FROM refinements WHERE status = 'pending' ORDER BY id").fetchall():
+                self._accept_if_confirmed(db, row["id"])
+        return value
+
+    # ── уточнения ─────────────────────────────────────────
+    def create_refinement(
+        self,
+        author: dict,
+        *,
+        question: str,
+        text: str,
+        model_answer: str = "",
+        history: list[dict] | None = None,
+        language: str = "",
+        embedding: np.ndarray | None = None,
+        embedding_model: str = "",
+    ) -> dict:
+        question, text = question.strip(), text.strip()
+        if not question or not text:
+            raise _error(422, "validation_error", "Нужны вопрос и текст уточнения")
+        with self._db() as db:
+            new_id = self._insert(
+                db, author["id"], question, text, model_answer, history or [], language, embedding, embedding_model
+            )
+            return self._view(db, new_id, author)
+
+    @staticmethod
+    def _insert(db, author_id, question, text, model_answer, history, language, embedding, embedding_model,
+                parent_id=None) -> int:
+        blob = None if embedding is None else np.asarray(embedding, dtype=np.float32).tobytes()
+        return db.execute(
+            "INSERT INTO refinements (question, question_norm, history, model_answer, text, language, author_id, "
+            "parent_id, embedding, embedding_model, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (question, normalize_question(question), json.dumps(history, ensure_ascii=False), model_answer, text,
+             language, author_id, parent_id, blob, embedding_model, time.time()),
+        ).lastrowid
+
+    def _pending(self, db, refinement_id: int):
+        row = db.execute("SELECT * FROM refinements WHERE id = ?", (refinement_id,)).fetchone()
+        if row is None:
+            raise _error(404, "not_found", "Не найдено")
+        if row["status"] != "pending":
+            raise _error(409, "closed", "Голосование по этому уточнению уже закрыто")
+        return row
+
+    def vote(self, user: dict, refinement_id: int, agree: bool, comment: str = "") -> dict:
+        comment = comment.strip()
+        with self._db() as db:
+            row = self._pending(db, refinement_id)
+            if row["author_id"] == user["id"]:
+                raise _error(403, "own_refinement", "Своё уточнение подтверждать нельзя")
+            if not agree and not comment:
+                raise _error(422, "comment_required", "К несогласию нужен комментарий")
+            try:
+                db.execute(
+                    "INSERT INTO votes (refinement_id, user_id, agree, comment, created_at) VALUES (?, ?, ?, ?, ?)",
+                    (refinement_id, user["id"], int(agree), comment, time.time()),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise _error(409, "already_voted", "Вы уже голосовали") from exc
+            if agree:
+                self._accept_if_confirmed(db, refinement_id)
+            else:
+                # Одного несогласия достаточно: уточнение не действует.
+                self._close(db, refinement_id, "rejected")
+                self._close_proposals(db, refinement_id)
+                self._notify(db, row["author_id"], "refinement_rejected", refinement_id, actor_id=user["id"])
+            return self._view(db, refinement_id, user)
+
+    @staticmethod
+    def _close(db, refinement_id: int, status: str) -> None:
+        db.execute(
+            "UPDATE refinements SET status = ?, decided_at = ? WHERE id = ?", (status, time.time(), refinement_id)
+        )
+
+    def _close_proposals(self, db, refinement_id: int, except_id: int | None = None, actor_id=None) -> None:
+        """Голосование закрылось — висящие формулировки к нему теряют смысл."""
+        rows = db.execute(
+            "SELECT id, author_id FROM proposals WHERE refinement_id = ? AND status = 'pending'", (refinement_id,)
+        ).fetchall()
+        for row in rows:
+            if row["id"] == except_id:
+                continue
+            db.execute(
+                "UPDATE proposals SET status = 'declined', decided_at = ? WHERE id = ?", (time.time(), row["id"])
+            )
+            self._notify(db, row["author_id"], "proposal_declined", refinement_id, row["id"], actor_id)
+
+    def _accept_if_confirmed(self, db, refinement_id: int) -> bool:
+        agreed = db.execute(
+            "SELECT COUNT(*) FROM votes WHERE refinement_id = ? AND agree = 1", (refinement_id,)
+        ).fetchone()[0]
+        if agreed < self._required(db):
+            return False
+        row = db.execute("SELECT * FROM refinements WHERE id = ?", (refinement_id,)).fetchone()
+        # Действует последний принятый: прежний ответ на тот же вопрос уходит в архив.
+        for old in db.execute(
+            "SELECT id, author_id FROM refinements WHERE status = 'accepted' AND question_norm = ? AND history = ?",
+            (row["question_norm"], row["history"]),
+        ).fetchall():
+            self._close(db, old["id"], "archived")
+            self._notify(db, old["author_id"], "refinement_archived", old["id"])
+        self._close(db, refinement_id, "accepted")
+        self._close_proposals(db, refinement_id)
+        self._notify(db, row["author_id"], "refinement_accepted", refinement_id)
+        return True
+
+    def archive(self, admin: dict, refinement_id: int) -> dict:
+        """Администратор снимает принятый ответ: система перестаёт его использовать."""
+        with self._db() as db:
+            row = db.execute("SELECT * FROM refinements WHERE id = ?", (refinement_id,)).fetchone()
+            if row is None:
+                raise _error(404, "not_found", "Не найдено")
+            if row["status"] not in ("accepted", "pending"):
+                raise _error(409, "closed", "Уточнение уже закрыто")
+            self._close(db, refinement_id, "archived")
+            self._close_proposals(db, refinement_id, actor_id=admin["id"])
+            self._notify(db, row["author_id"], "refinement_archived", refinement_id, actor_id=admin["id"])
+            return self._view(db, refinement_id, admin)
+
+    # ── своя формулировка ─────────────────────────────────
+    def propose(self, user: dict, refinement_id: int, text: str, comment: str = "") -> dict:
+        text = text.strip()
+        if not text:
+            raise _error(422, "validation_error", "Нужен текст формулировки")
+        with self._db() as db:
+            row = self._pending(db, refinement_id)
+            if row["author_id"] == user["id"]:
+                raise _error(403, "own_refinement", "Своё уточнение правит сам автор")
+            if db.execute(
+                "SELECT 1 FROM proposals WHERE refinement_id = ? AND author_id = ? AND status = 'pending'",
+                (refinement_id, user["id"]),
+            ).fetchone():
+                raise _error(409, "already_proposed", "Ваша формулировка уже ждёт решения автора")
+            proposal_id = db.execute(
+                "INSERT INTO proposals (refinement_id, author_id, text, comment, created_at) VALUES (?, ?, ?, ?, ?)",
+                (refinement_id, user["id"], text, comment.strip(), time.time()),
+            ).lastrowid
+            self._notify(db, row["author_id"], "proposal_received", refinement_id, proposal_id, user["id"])
+            return self._view(db, refinement_id, user)
+
+    def decide_proposal(self, user: dict, proposal_id: int, accept: bool) -> dict:
+        """Автор уточнения принимает или отклоняет чужую формулировку.
+
+        Принял — текущее уточнение закрывается, голосование начинается заново
+        по новой формулировке; согласие автора считается первым подтверждением.
+        """
+        with self._db() as db:
+            proposal = db.execute("SELECT * FROM proposals WHERE id = ?", (proposal_id,)).fetchone()
+            if proposal is None:
+                raise _error(404, "not_found", "Не найдено")
+            if proposal["status"] != "pending":
+                raise _error(409, "closed", "По этой формулировке решение уже принято")
+            row = self._pending(db, proposal["refinement_id"])
+            if row["author_id"] != user["id"]:
+                raise _error(403, "forbidden", "Решает автор уточнения")
+            now = time.time()
+            if not accept:
+                db.execute("UPDATE proposals SET status = 'declined', decided_at = ? WHERE id = ?", (now, proposal_id))
+                self._notify(db, proposal["author_id"], "proposal_declined", row["id"], proposal_id, user["id"])
+                return self._view(db, row["id"], user)
+            db.execute("UPDATE proposals SET status = 'accepted', decided_at = ? WHERE id = ?", (now, proposal_id))
+            self._close(db, row["id"], "replaced")
+            self._close_proposals(db, row["id"], except_id=proposal_id, actor_id=user["id"])
+            new_id = db.execute(
+                "INSERT INTO refinements (question, question_norm, history, model_answer, text, language, author_id, "
+                "parent_id, embedding, embedding_model, created_at) "
+                "SELECT question, question_norm, history, model_answer, ?, language, ?, id, embedding, "
+                "embedding_model, ? FROM refinements WHERE id = ?",
+                (proposal["text"], proposal["author_id"], now, row["id"]),
+            ).lastrowid
+            db.execute(
+                "INSERT INTO votes (refinement_id, user_id, agree, comment, created_at) VALUES (?, ?, 1, '', ?)",
+                (new_id, user["id"], now),
+            )
+            self._notify(db, proposal["author_id"], "proposal_accepted", new_id, proposal_id, user["id"])
+            self._accept_if_confirmed(db, new_id)
+            return self._view(db, new_id, user)
+
+    # ── чтение ────────────────────────────────────────────
+    def get_refinement(self, user: dict, refinement_id: int) -> dict:
+        with self._db() as db:
+            if db.execute("SELECT 1 FROM refinements WHERE id = ?", (refinement_id,)).fetchone() is None:
+                raise _error(404, "not_found", "Не найдено")
+            return self._view(db, refinement_id, user)
+
+    def list_refinements(self, user: dict, scope: str) -> list[dict]:
+        uid = user["id"]
+        queries = {
+            # Очередь: чужие ожидающие, по которым я ещё не высказался.
+            "queue": (
+                "SELECT id FROM refinements r WHERE status = 'pending' AND author_id != ? AND NOT EXISTS "
+                "(SELECT 1 FROM votes v WHERE v.refinement_id = r.id AND v.user_id = ?) ORDER BY id",
+                (uid, uid),
+            ),
+            "mine": ("SELECT id FROM refinements WHERE author_id = ? ORDER BY id DESC LIMIT 200", (uid,)),
+            "accepted": ("SELECT id FROM refinements WHERE status = 'accepted' ORDER BY decided_at DESC", ()),
+            "all": ("SELECT id FROM refinements ORDER BY id DESC LIMIT 500", ()),
+        }
+        if scope not in queries:
+            raise _error(422, "validation_error", "Неизвестный список")
+        sql, params = queries[scope]
+        with self._db() as db:
+            return [self._view(db, r["id"], user) for r in db.execute(sql, params).fetchall()]
+
+    def counts(self, user: dict) -> dict:
+        uid = user["id"]
+        with self._db() as db:
+            queue = db.execute(
+                "SELECT COUNT(*) FROM refinements r WHERE status = 'pending' AND author_id != ? AND NOT EXISTS "
+                "(SELECT 1 FROM votes v WHERE v.refinement_id = r.id AND v.user_id = ?)",
+                (uid, uid),
+            ).fetchone()[0]
+            unread = db.execute(
+                "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND read_at IS NULL", (uid,)
+            ).fetchone()[0]
+        return {"queue": queue if user["role"] == "medic" else 0, "unread": unread}
+
+    def _view(self, db, refinement_id: int, viewer: dict) -> dict:
+        row = db.execute(
+            "SELECT r.*, u.name AS author_name FROM refinements r JOIN users u ON u.id = r.author_id WHERE r.id = ?",
+            (refinement_id,),
+        ).fetchone()
+        votes = [
+            {"user": v["name"], "user_id": v["user_id"], "agree": bool(v["agree"]), "comment": v["comment"]}
+            for v in db.execute(
+                "SELECT v.*, u.name FROM votes v JOIN users u ON u.id = v.user_id "
+                "WHERE v.refinement_id = ? ORDER BY v.created_at",
+                (refinement_id,),
+            )
+        ]
+        proposals = [
+            {
+                "id": p["id"],
+                "author": p["name"],
+                "author_id": p["author_id"],
+                "text": p["text"],
+                "comment": p["comment"],
+                "status": p["status"],
+            }
+            for p in db.execute(
+                "SELECT p.*, u.name FROM proposals p JOIN users u ON u.id = p.author_id "
+                "WHERE p.refinement_id = ? ORDER BY p.id",
+                (refinement_id,),
+            )
+        ]
+        mine = row["author_id"] == viewer["id"]
+        voted = any(v["user_id"] == viewer["id"] for v in votes)
+        open_for_me = row["status"] == "pending" and not mine and viewer["role"] == "medic"
+        return {
+            "id": row["id"],
+            "question": row["question"],
+            "history": json.loads(row["history"]),
+            "model_answer": row["model_answer"],
+            "text": row["text"],
+            "language": row["language"],
+            "author": row["author_name"],
+            "author_id": row["author_id"],
+            "status": row["status"],
+            "parent_id": row["parent_id"],
+            "created_at": row["created_at"],
+            "decided_at": row["decided_at"],
+            "confirmations": sum(v["agree"] for v in votes),
+            "required": self._required(db),
+            "votes": votes,
+            "proposals": proposals,
+            "mine": mine,
+            "can_vote": open_for_me and not voted,
+            "can_propose": open_for_me
+            and not any(p["author_id"] == viewer["id"] and p["status"] == "pending" for p in proposals),
+        }
+
+    # ── сообщения в личном кабинете ───────────────────────
+    @staticmethod
+    def _notify(db, user_id, kind, refinement_id=None, proposal_id=None, actor_id=None) -> None:
+        db.execute(
+            "INSERT INTO notifications (user_id, kind, refinement_id, proposal_id, actor_id, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (user_id, kind, refinement_id, proposal_id, actor_id, time.time()),
+        )
+
+    def notifications(self, user: dict, limit: int = 100) -> list[dict]:
+        with self._db() as db:
+            rows = db.execute(
+                "SELECT n.*, a.name AS actor, r.question, r.text, r.status AS refinement_status, "
+                "p.text AS proposal_text, p.comment AS proposal_comment, p.status AS proposal_status "
+                "FROM notifications n LEFT JOIN users a ON a.id = n.actor_id "
+                "LEFT JOIN refinements r ON r.id = n.refinement_id LEFT JOIN proposals p ON p.id = n.proposal_id "
+                "WHERE n.user_id = ? ORDER BY n.id DESC LIMIT ?",
+                (user["id"], limit),
+            ).fetchall()
+            out = []
+            for n in rows:
+                item = {key: n[key] for key in n.keys() if key not in ("user_id", "actor_id", "read_at")}
+                item["read"] = n["read_at"] is not None
+                if n["kind"] == "refinement_rejected":
+                    vote = db.execute(
+                        "SELECT comment FROM votes WHERE refinement_id = ? AND agree = 0", (n["refinement_id"],)
+                    ).fetchone()
+                    item["comment"] = vote["comment"] if vote else ""
+                out.append(item)
+            return out
+
+    def mark_read(self, user: dict) -> None:
+        with self._db() as db:
+            db.execute(
+                "UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL",
+                (time.time(), user["id"]),
+            )
+
+    # ── принятые ответы: выдача и выгрузка ────────────────
+    def accepted_for_matching(self) -> list[dict]:
+        """Принятые ответы на самостоятельные вопросы (без предыстории диалога)."""
+        with self._db() as db:
+            rows = db.execute(
+                "SELECT id, question, question_norm, text, embedding, embedding_model, decided_at FROM refinements "
+                "WHERE status = 'accepted' AND history = '[]' ORDER BY decided_at DESC"
+            ).fetchall()
+            return [
+                {
+                    "id": r["id"],
+                    "question": r["question"],
+                    "question_norm": r["question_norm"],
+                    "text": r["text"],
+                    "embedding": None if r["embedding"] is None else np.frombuffer(r["embedding"], dtype=np.float32),
+                    "embedding_model": r["embedding_model"],
+                    "decided_at": r["decided_at"],
+                    "confirmations": db.execute(
+                        "SELECT COUNT(*) FROM votes WHERE refinement_id = ? AND agree = 1", (r["id"],)
+                    ).fetchone()[0],
+                }
+                for r in rows
+            ]
+
+    def export_rows(self) -> list[dict]:
+        """Принятые пары «вопрос — ответ» в формате диалога для дообучения."""
+        with self._db() as db:
+            rows = db.execute(
+                "SELECT * FROM refinements WHERE status = 'accepted' ORDER BY decided_at"
+            ).fetchall()
+            return [
+                {
+                    "messages": [
+                        *json.loads(r["history"]),
+                        {"role": "user", "content": r["question"]},
+                        {"role": "assistant", "content": r["text"]},
+                    ],
+                    "meta": {
+                        "refinement_id": r["id"],
+                        "language": r["language"],
+                        "accepted_at": r["decided_at"],
+                        "model_answer": r["model_answer"],
+                    },
+                }
+                for r in rows
+            ]

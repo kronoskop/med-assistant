@@ -93,6 +93,9 @@ class ChatResponse(BaseModel):
     # Откуда сноски: model — модель сослалась сама; similarity — модель ссылок
     # не поставила, и сервер сопоставил предложения ответа с фрагментами.
     attribution: str = "model"
+    # Ответ принят медиками (grounding=verified): номер уточнения, число
+    # подтверждений, время принятия. Модель для такого ответа не вызывалась.
+    verified: dict | None = None
 
 
 class UTF8JSONResponse(JSONResponse):

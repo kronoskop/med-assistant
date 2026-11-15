@@ -10,6 +10,8 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.llm import ensure_structured_output, get_llm
+from app.review.api import router as review_router
+from app.review.auth import ensure_first_admin, get_store
 from app.routers import router
 from app.schemas import AppError, ErrorBody, UTF8JSONResponse
 from app.web import router as web_router
@@ -43,6 +45,7 @@ def create_app() -> FastAPI:
         default_response_class=UTF8JSONResponse,
     )
     application.include_router(router)
+    application.include_router(review_router)
     application.include_router(web_router)
     application.add_exception_handler(AppError, _app_error_handler)
     application.add_exception_handler(RequestValidationError, _validation_handler)
@@ -53,6 +56,7 @@ def create_app() -> FastAPI:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
+    ensure_first_admin(app.dependency_overrides.get(get_store, get_store)())
     await _check_model_on_startup(app)
     await _warm_up_embeddings(app)
     yield

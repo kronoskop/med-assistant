@@ -21,3 +21,4 @@ design/**/clinicompass-interface.html
 eval/results/
 demo.log
 .demo.pid
+/data/
