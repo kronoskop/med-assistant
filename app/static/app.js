@@ -44,25 +44,35 @@ const ICONS = {
   'sun': 'M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4',
 };
 
-// Фирменный знак: компасная стрелка из двух долей разной плотности.
-// Вертикальная ось вдвое длиннее горизонтальной — это компас, а не звёздочка.
+// Фирменный знак Meyar («معيار» — стандарт, мерило): деления измерительной
+// шкалы складываются в букву M, а на центральной отметке — норме — горит точка.
+// Деления красятся в `color`, отметка нормы и точка всегда золотые.
+const MARK_BARS = [
+  [3.6, 4.5], [6.4, 7.7], [9.2, 10.9], [14.8, 10.9], [17.6, 7.7], [20.4, 4.5],
+];
 function mark(size, color) {
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('fill', 'none');
   svg.setAttribute('aria-hidden', 'true');
   svg.setAttribute('style', `width:${size}px;height:${size}px;flex:none;display:block`);
-  const shapes = [
-    ['M12 1.6 Q13.1 10.6 17.9 12 Q13.1 13.4 12 22.4 Z', '1'],
-    ['M12 1.6 Q10.9 10.6 6.1 12 Q10.9 13.4 12 22.4 Z', '.58'],
-  ];
-  for (const [d, opacity] of shapes) {
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', d);
-    path.setAttribute('fill', color || '#ffffff');
-    path.setAttribute('opacity', opacity);
+  const line = (x, top, stroke) => {
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', `M${x} 19.6V${top}`);
+    path.setAttribute('stroke', stroke);
+    path.setAttribute('stroke-width', '1.7');
+    path.setAttribute('stroke-linecap', 'round');
     svg.appendChild(path);
-  }
+  };
+  for (const [x, top] of MARK_BARS) line(x, top, color || '#ffffff');
+  line(12, 16.2, '#f3b548');
+  const dot = document.createElementNS(ns, 'circle');
+  dot.setAttribute('cx', '12');
+  dot.setAttribute('cy', '11.6');
+  dot.setAttribute('r', '1.7');
+  dot.setAttribute('fill', '#f3b548');
+  svg.appendChild(dot);
   return svg;
 }
 

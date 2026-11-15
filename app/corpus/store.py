@@ -54,7 +54,7 @@ def fetch_edition(
 
 def fetch_all(documents: list[Document], root: Path, *, force: bool = False) -> list[FetchResult]:
     results: list[FetchResult] = []
-    headers = {"User-Agent": "CliniCompass corpus fetcher"}
+    headers = {"User-Agent": "Meyar corpus fetcher"}
     with httpx.Client(headers=headers) as client:
         for document in documents:
             for edition in document.local_editions:

@@ -62,7 +62,10 @@ const Review = (() => {
     const form = el('form', { class: 'rv-login-card' }, [
       el('div', { class: 'rv-login-brand' }, [
         el('span', { class: 'rv-login-mark' }, [mark(20)]),
-        el('span', { text: 'CliniCompass' }),
+        el('span', { class: 'rv-login-text' }, [
+          el('span', { class: 'rv-login-name', lang: 'en', translate: 'no', text: 'meyar' }),
+          el('span', { class: 'rv-login-tagline', text: T().brandTagline }),
+        ]),
         languagePicker(),
       ]),
       el('h2', { text: T().loginTitle }),

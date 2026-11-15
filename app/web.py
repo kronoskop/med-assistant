@@ -18,6 +18,7 @@ ASSETS: dict[str, str] = {
     "review.js": "text/javascript; charset=utf-8",
     "review-i18n.js": "text/javascript; charset=utf-8",
     "review.css": "text/css; charset=utf-8",
+    "favicon.svg": "image/svg+xml",
 }
 
 

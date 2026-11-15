@@ -10,6 +10,7 @@ def test_ui_assets_served(client):
         "/ui/app.js": "text/javascript",
         "/ui/data.js": "text/javascript",
         "/ui/styles.css": "text/css",
+        "/ui/favicon.svg": "image/svg+xml",
     }
     for path, media_type in expected.items():
         response = client.get(path)
