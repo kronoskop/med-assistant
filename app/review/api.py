@@ -6,11 +6,11 @@ import asyncio
 import json
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Path, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from app.review.auth import COOKIE, current_user, get_store, require_admin, require_medic, throttle
-from app.review.store import Store
+from app.review.store import Store, safe_log
 from app.review.verified import get_question_embedder, safe_embedding
 from app.schemas import AppError, ChatMessage
 from app.settings import get_settings
@@ -75,13 +75,19 @@ class SettingsBody(BaseModel):
 # ── вход ──────────────────────────────────────────────────
 @router.post("/auth/login")
 def login(body: LoginBody, request: Request, response: Response, store: Store = Depends(get_store)):
-    throttle.check(body.login)
+    try:
+        throttle.check(body.login)
+    except AppError:
+        safe_log(store, "login_failed", login=body.login, status="throttled")
+        raise
     settings = get_settings()
     found = store.login(body.login, body.password, settings.session_hours * 3600)
     throttle.record(body.login, found is not None)
     if found is None:
+        safe_log(store, "login_failed", login=body.login)
         raise AppError(401, "bad_credentials", "Неверный логин или пароль")
     token, user = found
+    safe_log(store, "login", user_id=user["id"], login=user["login"])
     response.set_cookie(
         COOKIE,
         token,
@@ -96,7 +102,11 @@ def login(body: LoginBody, request: Request, response: Response, store: Store = 
 
 @router.post("/auth/logout")
 def logout(request: Request, response: Response, store: Store = Depends(get_store)):
-    store.logout(request.cookies.get(COOKIE, ""))
+    token = request.cookies.get(COOKIE, "")
+    user = store.session_user(token)
+    store.logout(token)
+    if user is not None:
+        safe_log(store, "logout", user_id=user["id"], login=user["login"])
     response.delete_cookie(COOKIE, path="/")
     return {"status": "ok"}
 
@@ -211,6 +221,26 @@ def admin_settings(_: dict = Depends(require_admin), store: Store = Depends(get_
 @router.put("/admin/settings")
 def update_settings(body: SettingsBody, _: dict = Depends(require_admin), store: Store = Depends(get_store)):
     return {"required_confirmations": store.set_required_confirmations(body.required_confirmations)}
+
+
+# Сдвиг часового пояса браузера в минутах к востоку от UTC: сутки на странице
+# совпадают с сутками администратора, а не сервера.
+TZ = Query(default=0, ge=-14 * 60, le=14 * 60)
+
+
+@router.get("/admin/activity")
+def activity(tz: int = TZ, _: dict = Depends(require_admin), store: Store = Depends(get_store)):
+    return {"days": store.activity_days(tz)}
+
+
+@router.get("/admin/activity/{day}")
+def activity_day(
+    day: str = Path(pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    tz: int = TZ,
+    _: dict = Depends(require_admin),
+    store: Store = Depends(get_store),
+):
+    return {"day": day, "items": store.activity_day(day, tz)}
 
 
 @router.get("/admin/export.jsonl")

@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 import secrets
 import sqlite3
 import time
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import numpy as np
@@ -85,7 +87,40 @@ CREATE TABLE IF NOT EXISTS notifications (
     read_at REAL
 );
 CREATE INDEX IF NOT EXISTS notifications_user ON notifications(user_id, read_at);
+-- Журнал для страницы «Активность»: входы, вопросы, сбои. Уточнения, голоса и
+-- формулировки сюда не дублируются — у них свои таблицы с временем.
+CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY,
+    created_at REAL NOT NULL,
+    kind TEXT NOT NULL,
+    user_id INTEGER,
+    login TEXT NOT NULL DEFAULT '',
+    question TEXT NOT NULL DEFAULT '',
+    language TEXT NOT NULL DEFAULT '',
+    followup INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT '',
+    error TEXT NOT NULL DEFAULT '',
+    first_ms REAL,
+    total_ms REAL,
+    refinement_id INTEGER
+);
+CREATE INDEX IF NOT EXISTS events_time ON events(created_at);
 """
+
+# Виды событий журнала и исходы вопроса.
+EVENT_KINDS = ("login", "login_failed", "logout", "question", "error", "refinement_accepted", "refinement_rejected")
+QUESTION_STATUSES = ("answered", "refused", "verified", "stopped", "error")
+
+
+_journal_logger = logging.getLogger("app.activity")
+
+
+def safe_log(store: "Store", kind: str, **fields) -> None:
+    """Запись в журнал активности не должна ломать вход или ответ врачу."""
+    try:
+        store.log_event(kind, **fields)
+    except Exception:  # noqa: BLE001
+        _journal_logger.exception("не удалось записать событие %s", kind)
 
 
 def normalize_question(text: str) -> str:
@@ -330,6 +365,7 @@ class Store:
             else:
                 # Одного несогласия достаточно: уточнение не действует.
                 self._close(db, refinement_id, "rejected")
+                self._decided(db, refinement_id, "refinement_rejected")
                 self._close_proposals(db, refinement_id)
                 self._notify(db, row["author_id"], "refinement_rejected", refinement_id, actor_id=user["id"])
             return self._view(db, refinement_id, user)
@@ -368,6 +404,7 @@ class Store:
             self._close(db, old["id"], "archived")
             self._notify(db, old["author_id"], "refinement_archived", old["id"])
         self._close(db, refinement_id, "accepted")
+        self._decided(db, refinement_id, "refinement_accepted")
         self._close_proposals(db, refinement_id)
         self._notify(db, row["author_id"], "refinement_accepted", refinement_id)
         return True
@@ -574,6 +611,181 @@ class Store:
                 "UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL",
                 (time.time(), user["id"]),
             )
+
+    # ── журнал активности ─────────────────────────────────
+    @staticmethod
+    def _decided(db, refinement_id: int, kind: str) -> None:
+        """Решение по уточнению — в журнал в ту же транзакцию: дата решения
+        в самой записи уточнения перезаписывается при уходе в архив."""
+        question = db.execute("SELECT question FROM refinements WHERE id = ?", (refinement_id,)).fetchone()
+        db.execute(
+            "INSERT INTO events (created_at, kind, question, refinement_id) VALUES (?, ?, ?, ?)",
+            (time.time(), kind, question["question"] if question else "", refinement_id),
+        )
+
+    def log_event(
+        self,
+        kind: str,
+        *,
+        user_id: int | None = None,
+        login: str = "",
+        question: str = "",
+        language: str = "",
+        followup: bool = False,
+        status: str = "",
+        error: str = "",
+        first_ms: float | None = None,
+        total_ms: float | None = None,
+    ) -> None:
+        with self._db() as db:
+            db.execute(
+                "INSERT INTO events (created_at, kind, user_id, login, question, language, followup, status, error, "
+                "first_ms, total_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (time.time(), kind, user_id or None, login[:64], question, language[:8], int(followup), status,
+                 error[:200], first_ms, total_ms),
+            )
+
+    @staticmethod
+    def _day_expr(column: str) -> str:
+        # Сутки — по часам администратора: сдвиг приходит из браузера.
+        return f"date({column} + :shift, 'unixepoch')"
+
+    def activity_days(self, tz_minutes: int = 0, days: int = 90) -> list[dict]:
+        """Сводка по дням, новые сверху: входы, вопросы по людям, время ответа, сбои, уточнения."""
+        params = {"shift": tz_minutes * 60, "since": time.time() - days * 86400}
+        out: dict[str, dict] = {}
+
+        def day(key: str) -> dict:
+            return out.setdefault(key, {
+                "day": key, "users": set(), "logins": 0, "failed_logins": 0, "questions": 0, "per_user": {},
+                "answer_ms": None, "first_ms": None, "errors": 0, "stopped": 0, "verified": 0, "refused": 0,
+                "refinements": 0, "accepted": 0, "rejected": 0, "votes_agree": 0, "votes_disagree": 0, "proposals": 0,
+            })
+
+        with self._db() as db:
+            names = {r["id"]: r["name"] for r in db.execute("SELECT id, name FROM users")}
+            for r in db.execute(
+                f"SELECT {self._day_expr('created_at')} AS d, kind, user_id, status, COUNT(*) AS n FROM events "
+                "WHERE created_at >= :since GROUP BY d, kind, user_id, status",
+                params,
+            ):
+                item = day(r["d"])
+                if r["user_id"] and r["kind"] in ("login", "question"):
+                    item["users"].add(r["user_id"])
+                if r["kind"] == "login":
+                    item["logins"] += r["n"]
+                elif r["kind"] == "login_failed":
+                    item["failed_logins"] += r["n"]
+                elif r["kind"] == "error":
+                    item["errors"] += r["n"]
+                elif r["kind"] == "refinement_accepted":
+                    item["accepted"] += r["n"]
+                elif r["kind"] == "refinement_rejected":
+                    item["rejected"] += r["n"]
+                elif r["kind"] == "question":
+                    item["questions"] += r["n"]
+                    who = names.get(r["user_id"], "—")
+                    item["per_user"][who] = item["per_user"].get(who, 0) + r["n"]
+                    if r["status"] in ("error", "stopped", "verified", "refused"):
+                        item[{"error": "errors"}.get(r["status"], r["status"])] += r["n"]
+            # Среднее время — по завершённым ответам: оборванные и сбойные его исказят.
+            for r in db.execute(
+                f"SELECT {self._day_expr('created_at')} AS d, AVG(total_ms) AS total, AVG(first_ms) AS first "
+                "FROM events WHERE created_at >= :since AND kind = 'question' "
+                "AND status IN ('answered', 'refused', 'verified') GROUP BY d",
+                params,
+            ):
+                item = day(r["d"])
+                item["answer_ms"] = None if r["total"] is None else round(r["total"])
+                item["first_ms"] = None if r["first"] is None else round(r["first"])
+            for r in db.execute(
+                f"SELECT {self._day_expr('created_at')} AS d, author_id, COUNT(*) AS n FROM refinements "
+                "WHERE created_at >= :since GROUP BY d, author_id",
+                params,
+            ):
+                item = day(r["d"])
+                item["refinements"] += r["n"]
+                item["users"].add(r["author_id"])
+            for r in db.execute(
+                f"SELECT {self._day_expr('created_at')} AS d, user_id, agree, COUNT(*) AS n FROM votes "
+                "WHERE created_at >= :since GROUP BY d, user_id, agree",
+                params,
+            ):
+                item = day(r["d"])
+                item["votes_agree" if r["agree"] else "votes_disagree"] += r["n"]
+                item["users"].add(r["user_id"])
+            for r in db.execute(
+                f"SELECT {self._day_expr('created_at')} AS d, COUNT(*) AS n FROM proposals "
+                "WHERE created_at >= :since GROUP BY d",
+                params,
+            ):
+                day(r["d"])["proposals"] += r["n"]
+        rows = sorted(out.values(), key=lambda item: item["day"], reverse=True)
+        for item in rows:
+            item["users"] = len(item["users"])
+            item["per_user"] = [
+                {"name": name, "questions": n}
+                for name, n in sorted(item["per_user"].items(), key=lambda kv: (-kv[1], kv[0]))
+            ]
+        return rows
+
+    def activity_day(self, day: str, tz_minutes: int = 0) -> list[dict]:
+        """Все события одних суток по порядку: кто, когда, что спросил, сколько ждал ответа."""
+        try:
+            start = datetime.fromisoformat(day).replace(tzinfo=timezone(timedelta(minutes=tz_minutes))).timestamp()
+        except ValueError as exc:
+            raise _error(422, "validation_error", "Дата в формате ГГГГ-ММ-ДД") from exc
+        window = {"start": start, "end": start + 86400}
+        items: list[dict] = []
+        with self._db() as db:
+            for r in db.execute(
+                "SELECT e.*, u.name FROM events e LEFT JOIN users u ON u.id = e.user_id "
+                "WHERE e.created_at >= :start AND e.created_at < :end",
+                window,
+            ):
+                items.append({
+                    "time": r["created_at"],
+                    "kind": r["kind"],
+                    "user": r["name"] or r["login"] or "",
+                    "question": r["question"],
+                    "language": r["language"],
+                    "followup": bool(r["followup"]),
+                    "status": r["status"],
+                    "error": r["error"],
+                    "first_ms": r["first_ms"],
+                    "total_ms": r["total_ms"],
+                    "refinement_id": r["refinement_id"],
+                })
+            for r in db.execute(
+                "SELECT r.id, r.question, r.text, r.created_at, r.parent_id, u.name FROM refinements r "
+                "JOIN users u ON u.id = r.author_id WHERE r.created_at >= :start AND r.created_at < :end",
+                window,
+            ):
+                items.append({
+                    "time": r["created_at"], "kind": "refinement", "user": r["name"], "question": r["question"],
+                    "text": r["text"], "refinement_id": r["id"], "status": "replacement" if r["parent_id"] else "",
+                })
+            for r in db.execute(
+                "SELECT v.*, u.name, r.question FROM votes v JOIN users u ON u.id = v.user_id "
+                "JOIN refinements r ON r.id = v.refinement_id WHERE v.created_at >= :start AND v.created_at < :end",
+                window,
+            ):
+                items.append({
+                    "time": r["created_at"], "kind": "vote", "user": r["name"], "question": r["question"],
+                    "status": "agree" if r["agree"] else "disagree", "text": r["comment"],
+                    "refinement_id": r["refinement_id"],
+                })
+            for r in db.execute(
+                "SELECT p.*, u.name, r.question FROM proposals p JOIN users u ON u.id = p.author_id "
+                "JOIN refinements r ON r.id = p.refinement_id WHERE p.created_at >= :start AND p.created_at < :end",
+                window,
+            ):
+                items.append({
+                    "time": r["created_at"], "kind": "proposal", "user": r["name"], "question": r["question"],
+                    "text": r["text"], "refinement_id": r["refinement_id"],
+                })
+        items.sort(key=lambda item: item["time"])
+        return items
 
     # ── принятые ответы: выдача и выгрузка ────────────────
     def accepted_for_matching(self) -> list[dict]:
