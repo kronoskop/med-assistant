@@ -12,6 +12,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.llm import ensure_structured_output, get_llm
 from app.review.api import router as review_router
 from app.review.auth import ensure_first_admin, get_store
+from app.review.store import safe_log
 from app.routers import router
 from app.schemas import AppError, ErrorBody, UTF8JSONResponse
 from app.web import router as web_router
@@ -122,8 +123,14 @@ async def _check_model_on_startup(app: FastAPI) -> None:
 
 async def _access_log(request: Request, call_next):
     started = time.perf_counter()
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        _journal_error(request, type(exc).__name__)
+        raise
     elapsed_ms = (time.perf_counter() - started) * 1000
+    if response.status_code >= 500:
+        _journal_error(request, str(response.status_code))
     access_logger.info(
         "%s %s %s %.1fms",
         request.method,
@@ -132,6 +139,17 @@ async def _access_log(request: Request, call_next):
         elapsed_ms,
     )
     return response
+
+
+def _journal_error(request: Request, code: str) -> None:
+    """Сбой сервера — в журнал активности. Вопросы врачей пишет сам чат,
+    вместе с текстом и временем, поэтому здесь они не дублируются. `/ready`
+    отвечает 503, пока LM Studio не поднята, и интерфейс опрашивает его
+    постоянно: это состояние, а не сбой."""
+    if request.url.path in ("/api/v1/chat", "/ready"):
+        return
+    store = request.app.dependency_overrides.get(get_store, get_store)()
+    safe_log(store, "error", error=f"{code} {request.method} {request.url.path}")
 
 
 async def _app_error_handler(_request: Request, exc: AppError) -> JSONResponse:

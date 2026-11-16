@@ -175,3 +175,35 @@
 .rv-settings-extra .lang-row .icon { font-size: 15px; color: var(--ink-muted); }
 /* Одна вкладка — полоса вкладок не нужна, остаётся только линия под заголовком. */
 .rv-tabs:has(> button:only-child) { height: 0; padding: 0; overflow: hidden; }
+
+/* Активность: сводка по дням и события дня. Таблица прокручивается сама,
+   страница вбок не уезжает. */
+.rv-act-head { justify-content: space-between; }
+.rv-act-head .rv-muted { flex: 1; min-width: 200px; }
+.rv-act-title { flex: 1; font-size: 14px; font-weight: 600; }
+.rv-table-wrap { flex: none; overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.rv-table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.45; }
+.rv-table th {
+  padding: 9px 10px; text-align: left; white-space: nowrap; border-bottom: 1px solid var(--line);
+  font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; color: var(--ink-faint);
+}
+.rv-table td { padding: 9px 10px; vertical-align: top; border-top: 1px solid var(--line-soft); }
+.rv-table tbody tr:first-child td { border-top: none; }
+.rv-table tbody tr:hover td { background: var(--brand-tint); }
+.rv-table .n { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rv-table .bad, .rv-act-sub.bad { color: var(--accent-hover); }
+.rv-zero { color: var(--ink-faint); }
+.rv-act-sub { font-size: 11.5px; color: var(--ink-faint); white-space: nowrap; }
+.rv-events .rv-act-sub { white-space: normal; }
+.rv-overlay button.rv-act-open { padding: 0; border: none; background: none; font-weight: 600; color: var(--brand); white-space: nowrap; }
+.rv-overlay button.rv-act-open:hover { background: none; text-decoration: underline; }
+.rv-overlay button.rv-act-more { padding: 4px 9px; white-space: nowrap; }
+.rv-act-time { color: var(--ink-muted); }
+.rv-events td:nth-child(2) { white-space: nowrap; }
+.rv-act-kind { display: inline-block; padding: 1px 7px; border-radius: 4px; font-size: 11px; font-weight: 600; white-space: nowrap; background: var(--brand-tab); color: var(--ink-muted); }
+.rv-act-kind.k-question { background: var(--brand-soft); color: var(--brand); }
+.rv-act-kind.k-error, .rv-act-kind.k-login_failed, .rv-act-kind.k-refinement_rejected { background: var(--accent-soft); color: var(--accent-hover); }
+.rv-act-kind.k-refinement_accepted { background: #e6f2ee; color: var(--ok); }
+.rv-act-q { font-weight: 600; overflow-wrap: anywhere; min-width: 220px; }
+.rv-act-qref { color: var(--ink-muted); overflow-wrap: anywhere; min-width: 220px; }
+.rv-ws:has(.rv-table) { max-width: 1080px; }

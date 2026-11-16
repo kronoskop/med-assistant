@@ -11,7 +11,7 @@
 
 const Review = (() => {
   const session = { user: null, counts: { queue: 0, unread: 0 }, required: 3 };
-  const view = { open: false, group: 'refine', tab: null, items: [], busy: false, form: null };
+  const view = { open: false, group: 'refine', tab: null, items: [], busy: false, form: null, day: null };
   const LANG_KEY = 'ui-lang'; // язык интерфейса — не клинические данные
 
   const isMedic = () => !!session.user && session.user.role === 'medic';
@@ -314,7 +314,7 @@ const Review = (() => {
   // ── кабинет ─────────────────────────────────────────────
   // Три меню боковой панели: уточнения, администрирование, настройки.
   function tabs() {
-    if (view.group === 'admin') return isAdmin() ? ['users', 'settings'] : [];
+    if (view.group === 'admin') return isAdmin() ? ['users', 'settings', 'activity'] : [];
     if (view.group === 'settings') return ['profile'];
     const list = [];
     if (isMedic()) list.push('queue', 'mine');
@@ -325,12 +325,13 @@ const Review = (() => {
 
   const groupTitle = () => (view.group === 'admin' ? T().adminMenu : view.group === 'settings' ? T().settingsTitle : T().workspace);
 
-  const TAB_LABEL = { queue: 'tabQueue', mine: 'tabMine', accepted: 'tabAccepted', inbox: 'tabInbox', users: 'tabUsers', settings: 'systemSettings', profile: 'tabProfile' };
+  const TAB_LABEL = { queue: 'tabQueue', mine: 'tabMine', accepted: 'tabAccepted', inbox: 'tabInbox', users: 'tabUsers', settings: 'systemSettings', activity: 'tabActivity', profile: 'tabProfile' };
 
   function openWorkspace(group, tab) {
     view.open = true;
     view.group = group || 'refine';
     view.form = null;
+    view.day = null;
     const first = view.group === 'refine' && session.counts.unread && !session.counts.queue ? 'inbox' : tabs()[0];
     loadTab(tab || first);
   }
@@ -354,6 +355,10 @@ const Review = (() => {
         if (session.counts.unread) await api('/notifications/read', { method: 'POST' });
       } else if (tab === 'users') view.items = (await api('/admin/users')).items;
       else if (tab === 'settings') session.required = (await api('/admin/settings')).required_confirmations;
+      else if (tab === 'activity') {
+        const tz = '?tz=' + -new Date().getTimezoneOffset();
+        view.items = view.day ? (await api('/admin/activity/' + view.day + tz)).items : (await api('/admin/activity' + tz)).days;
+      }
     } catch (err) { if (err.status !== 401) fail(err); }
     view.busy = false;
     if (!view.open) return;
@@ -375,7 +380,7 @@ const Review = (() => {
           const count = tab === 'queue' ? session.counts.queue : tab === 'inbox' ? session.counts.unread : 0;
           return el('button', {
             type: 'button', role: 'tab', 'aria-selected': tab === view.tab ? 'true' : 'false',
-            onClick: () => loadTab(tab),
+            onClick: () => { view.day = null; loadTab(tab); },
           }, [T()[TAB_LABEL[tab]], count ? el('span', { class: 'rv-count', text: String(count) }) : null]);
         })),
         body,
@@ -394,6 +399,7 @@ const Review = (() => {
     if (tab === 'inbox') return view.items.length ? view.items.map(renderNotification) : [empty(T().emptyInbox)];
     if (tab === 'users') return renderUsers();
     if (tab === 'settings') return renderSettings();
+    if (tab === 'activity') return view.day ? renderDay() : renderDays();
     return renderProfile();
   }
 
@@ -596,6 +602,98 @@ const Review = (() => {
         el('span', { class: 'rv-muted', text: T().exportNote }),
         el('div', { class: 'rv-row' }, [el('a', { class: 'rv-link', href: '/api/v1/admin/export.jsonl', download: true }, [icon('file-text'), T().exportBtn])]),
       ]),
+    ];
+  }
+
+  // ── активность (только администратор) ───────────────────
+  // Сводка по дням и все события выбранного дня. Сутки — по часам браузера.
+  const LOCALE = { en: 'en-GB', uz: 'uz-Latn', ru: 'ru-RU' };
+  const locale = () => LOCALE[state.lang] || 'ru-RU';
+  const seconds = (ms) => (ms === null || ms === undefined ? '—'
+    : (ms / 1000).toLocaleString(locale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' ' + T().actSec);
+  const dayLabel = (day) => new Date(day + 'T12:00:00').toLocaleDateString(locale(), { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  const clock = (ts) => new Date(ts * 1000).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const num = (n) => el('span', { class: n ? '' : 'rv-zero', text: n ? String(n) : '0' });
+
+  function activityHead(children) {
+    return el('div', { class: 'rv-row rv-act-head' }, [
+      ...children,
+      el('button', { type: 'button', class: 'rv-act-refresh', onClick: () => loadTab('activity') }, [icon('arrows-clockwise'), T().actRefresh]),
+    ]);
+  }
+
+  function renderDays() {
+    const t = T();
+    if (!view.items.length) return [activityHead([]), empty(t.actEmpty)];
+    const head = [t.actDay, t.actUsers, t.actLogins, t.actQuestions, t.actAnswerTime, t.actErrors, t.actRefinements, t.actVotes, ''];
+    const rows = view.items.map((d) => el('tr', {}, [
+      el('td', { class: 'rv-act-day' }, [el('button', { type: 'button', class: 'rv-act-open', onClick: () => { view.day = d.day; loadTab('activity'); } }, [dayLabel(d.day)])]),
+      el('td', { class: 'n' }, [num(d.users)]),
+      el('td', { class: 'n' }, [num(d.logins), d.failed_logins ? el('div', { class: 'rv-act-sub bad', text: fill(t.actFailed, { n: d.failed_logins }) }) : null]),
+      el('td', {}, [
+        el('div', { class: 'n' }, [num(d.questions)]),
+        ...d.per_user.map((u) => el('div', { class: 'rv-act-sub', text: u.name + ': ' + u.questions })),
+      ]),
+      el('td', { class: 'n' }, [
+        el('span', { text: seconds(d.answer_ms) }),
+        d.first_ms !== null ? el('div', { class: 'rv-act-sub', text: t.actFirst + ' ' + seconds(d.first_ms) }) : null,
+      ]),
+      el('td', { class: 'n' + (d.errors ? ' bad' : '') }, [num(d.errors), d.stopped ? el('div', { class: 'rv-act-sub', text: fill(t.actStopped, { n: d.stopped }) }) : null]),
+      el('td', { class: 'n' }, [
+        num(d.refinements),
+        d.accepted || d.rejected ? el('div', { class: 'rv-act-sub', text: fill(t.actDecided, { a: d.accepted, r: d.rejected }) }) : null,
+        d.proposals ? el('div', { class: 'rv-act-sub', text: fill(t.actProposals, { n: d.proposals }) }) : null,
+      ]),
+      el('td', { class: 'n' }, [el('span', { class: d.votes_agree + d.votes_disagree ? '' : 'rv-zero', text: d.votes_agree + ' / ' + d.votes_disagree })]),
+      el('td', {}, [el('button', { type: 'button', class: 'rv-act-more', onClick: () => { view.day = d.day; loadTab('activity'); } }, [t.actMore])]),
+    ]));
+    return [
+      activityHead([el('span', { class: 'rv-muted', text: t.actNote })]),
+      el('div', { class: 'rv-table-wrap sc' }, [el('table', { class: 'rv-table' }, [
+        el('thead', {}, [el('tr', {}, head.map((h) => el('th', { text: h })))]),
+        el('tbody', {}, rows),
+      ])]),
+    ];
+  }
+
+  function eventDetails(e) {
+    const t = T();
+    const out = [];
+    if (e.question) out.push(el('div', { class: e.kind === 'question' ? 'rv-act-q' : 'rv-act-qref', text: e.question }));
+    if (e.kind === 'question') {
+      const meta = [t.actStatus[e.status] || e.status];
+      if (e.total_ms !== null) meta.push(t.actAnswerTime.toLowerCase() + ': ' + seconds(e.total_ms));
+      if (e.first_ms !== null) meta.push(t.actFirst + ' ' + seconds(e.first_ms));
+      if (e.language) meta.push(e.language.toUpperCase());
+      if (e.followup) meta.push(t.actFollowup);
+      if (e.error) meta.push(e.error);
+      out.push(el('div', { class: 'rv-act-sub' + (e.status === 'error' ? ' bad' : ''), text: meta.join(' · ') }));
+    } else if (e.kind === 'vote') {
+      out.push(el('div', { class: 'rv-act-sub' + (e.status === 'agree' ? '' : ' bad'), text: (e.status === 'agree' ? t.voteAgree : t.voteDisagree) + (e.text ? ': ' + e.text : '') }));
+    } else if (e.kind === 'refinement' || e.kind === 'proposal') {
+      out.push(el('details', {}, [el('summary', { text: t.actShowText }), el('div', { class: 'rv-quote', text: e.text })]));
+    } else if (e.kind === 'error' || e.kind === 'login_failed') {
+      if (e.error || e.status) out.push(el('div', { class: 'rv-act-sub bad', text: e.error || t.actThrottled }));
+    }
+    return out;
+  }
+
+  function renderDay() {
+    const t = T();
+    const back = el('button', { type: 'button', onClick: () => { view.day = null; loadTab('activity'); } }, [icon('arrow-left'), t.actBack]);
+    const head = activityHead([back, el('span', { class: 'rv-act-title', text: dayLabel(view.day) })]);
+    if (!view.items.length) return [head, empty(t.actEmptyDay)];
+    return [
+      head,
+      el('div', { class: 'rv-table-wrap sc' }, [el('table', { class: 'rv-table rv-events' }, [
+        el('thead', {}, [el('tr', {}, [t.actTime, t.actWho, t.actEvent, t.actDetails].map((h) => el('th', { text: h })))]),
+        el('tbody', {}, view.items.map((e) => el('tr', { class: 'k-' + e.kind }, [
+          el('td', { class: 'n rv-act-time', text: clock(e.time) }),
+          el('td', { text: e.user || '—' }),
+          el('td', {}, [el('span', { class: 'rv-act-kind k-' + e.kind, text: t.actKind[e.kind] || e.kind })]),
+          el('td', {}, eventDetails(e)),
+        ]))),
+      ])]),
     ];
   }
 

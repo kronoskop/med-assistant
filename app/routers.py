@@ -25,7 +25,8 @@ from app.answer import (
 from app.corpus.service import Grounding, Retrieval, Retriever, get_retriever, render_fragments
 from app.llm import Claims, LLMClient, cited_ids, ensure_structured_output, get_llm
 from app.prompt import DISCLAIMER
-from app.review.auth import current_user
+from app.review.auth import current_user, get_store
+from app.review.store import Store, safe_log
 from app.review.verified import Verified, VerifiedAnswers, get_verified_answers
 from app.settings import get_settings
 from app.schemas import UTF8JSONResponse, AppError, ChatMessage, ChatRequest, ChatResponse
@@ -65,16 +66,59 @@ async def chat(
     llm: LLMClient = Depends(get_llm),
     retriever: Retriever = Depends(get_retriever),
     verified_answers: VerifiedAnswers = Depends(get_verified_answers),
-    _user: dict = Depends(current_user),
+    user: dict = Depends(current_user),
+    store: Store = Depends(get_store),
 ):
+    """Ответ врачу; каждый вопрос с исходом и временем попадает в журнал активности."""
     started = time.perf_counter()
     question = last_question(body.messages)
+    outcome: dict = {"status": "", "error": "", "first_ms": None, "total_ms": None}
+    record = {
+        "user_id": user["id"],
+        "login": user["login"],
+        "question": question,
+        "language": question_language(question) or "",
+        "followup": sum(m.role == "user" for m in body.messages) > 1,
+    }
+
+    def write() -> None:
+        if not outcome["status"]:
+            outcome["status"] = "stopped"  # врач закрыл вкладку или нажал «Стоп»
+        if outcome["total_ms"] is None:
+            outcome["total_ms"] = _ms(started)
+        safe_log(store, "question", **record, **outcome)
+
+    try:
+        response = await _chat(body, llm, retriever, verified_answers, started, question, outcome)
+    except Exception as exc:
+        outcome["status"] = "error"
+        outcome["error"] = exc.code if isinstance(exc, AppError) else type(exc).__name__
+        await asyncio.to_thread(write)
+        raise
+    if isinstance(response, StreamingResponse):
+        response.body_iterator = _recorded(response.body_iterator, write)
+    else:
+        await asyncio.to_thread(write)
+    return response
+
+
+async def _recorded(chunks: AsyncIterator[str], write) -> AsyncIterator[str]:
+    """Поток ответа, по окончании которого — в том числе обрыве — пишется журнал."""
+    try:
+        async for chunk in chunks:
+            yield chunk
+    finally:
+        write()
+
+
+async def _chat(body, llm, retriever, verified_answers, started: float, question: str, outcome: dict):
     # Принятый медиками ответ отдаётся дословно, без поиска и без модели.
     # Только на первый вопрос диалога: смысл последующих зависит от предыстории.
     if sum(m.role == "user" for m in body.messages) == 1:
         verified = await asyncio.to_thread(verified_answers, question)
         if verified is not None:
             _log_timing(stream=body.stream, verified=verified.refinement_id, total_ms=_ms(started))
+            outcome.update(status="verified", total_ms=_ms(started))
             if body.stream:
                 return StreamingResponse(_sse_verified(verified), media_type="text/event-stream")
             return ChatResponse(
@@ -93,6 +137,7 @@ async def chat(
     # иначе ответ пришёл бы из памяти модели.
     if not retrieval.is_grounded:
         text = refusal_text(retrieval.status)
+        outcome.update(status="refused", total_ms=_ms(started))
         if body.stream:
             return StreamingResponse(_sse_refusal(text, retrieval), media_type="text/event-stream")
         return _response(text, retrieval, [])
@@ -102,7 +147,7 @@ async def chat(
     if body.stream:
         claims = Claims()
         chunks = await llm.start_chat_stream(body.messages, fragments, claims, language=language)
-        timing = {"started": started, "retrieval_ms": retrieval_ms}
+        timing = {"started": started, "retrieval_ms": retrieval_ms, "outcome": outcome}
         return StreamingResponse(
             _sse(chunks, claims, retrieval, said, timing, retriever), media_type="text/event-stream"
         )
@@ -126,6 +171,7 @@ async def chat(
     elif _unsupported(await _support(retriever, substance, retrieval)):
         claimed = []
     _, grounded, _ = _settle(woven, retrieval, claimed)
+    outcome.update(status="answered" if grounded else "refused", total_ms=_ms(started))
     if not grounded:
         return _response(refusal_text(Grounding.NO_MATCH), retrieval, [])
     response = _response(woven, retrieval, claimed, answer.questions, answer.conflicts, said)
@@ -275,6 +321,8 @@ async def _sse(
         code = exc.code if isinstance(exc, AppError) else type(exc).__name__
         cause = type(exc.__cause__ or exc).__name__
         timing_logger.warning("stream_failed code=%s cause=%s after_chars=%s", code, cause, size)
+        if timing:
+            timing["outcome"].update(status="error", error=code, first_ms=first_ms)
         yield f"data: {json.dumps({'error': code})}\n\n"
         return
     finally:
@@ -283,6 +331,9 @@ async def _sse(
         close = getattr(chunks, "aclose", None)
         if close is not None:
             await close()
+    if timing:
+        grounded = _settle("", retrieval, claims.source_ids)[1]
+        timing["outcome"].update(status="answered" if grounded else "refused", first_ms=first_ms)
     try:
         yield _sources_event(retrieval, claims, said, attribution, attribution_best)
         sources_ms = _ms(timing["started"]) if timing else None
@@ -293,6 +344,7 @@ async def _sse(
     yield "data: [DONE]\n\n"
     if timing:
         answer_ms = _ms(timing["started"])
+        timing["outcome"]["total_ms"] = answer_ms
         _log_timing(
             stream=True,
             retrieval_ms=timing["retrieval_ms"],
