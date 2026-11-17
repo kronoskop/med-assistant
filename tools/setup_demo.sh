@@ -89,6 +89,27 @@ uv sync --extra dev -q
 say "5/6 Корпус и индекс (первый раз — долго: скачивание и разбор PDF)"
 uv run python tools/build_corpus.py
 
+# Локации по IP для журнала «Активность»: офлайн-база DB-IP Lite (CC BY 4.0),
+# IP медиков никуда не отправляются. Обновляется раз в месяц; не скачалась —
+# журнал пишет только IP.
+GEOIP_DB="data/dbip-city-lite.mmdb"
+if [[ ! -f "$GEOIP_DB" ]] || [[ -n "$(find "$GEOIP_DB" -mtime +35 2>/dev/null)" ]]; then
+  echo "Скачиваю базу локаций по IP (DB-IP Lite, около 130 МБ)…"
+  mkdir -p data
+  prev_month="$(date -v-1m +%Y-%m 2>/dev/null || date -d '-1 month' +%Y-%m)"
+  got=""
+  # В первые дни месяца свежей базы ещё нет — тогда берём прошлую.
+  for month in "$(date +%Y-%m)" "$prev_month"; do
+    if curl -fsSL -m 600 "https://download.db-ip.com/free/dbip-city-lite-$month.mmdb.gz" -o "$GEOIP_DB.gz.part"; then
+      gunzip -c "$GEOIP_DB.gz.part" >"$GEOIP_DB.part" && mv "$GEOIP_DB.part" "$GEOIP_DB" && got="$month"
+      rm -f "$GEOIP_DB.gz.part"
+      break
+    fi
+  done
+  rm -f "$GEOIP_DB.gz.part" "$GEOIP_DB.part"
+  if [[ -n "$got" ]]; then echo "База локаций: $got."; else echo "Базу локаций скачать не удалось: в журнале будут только IP."; fi
+fi
+
 say "6/6 Сервер"
 if [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
   echo "Перезапускаю сервер демо."

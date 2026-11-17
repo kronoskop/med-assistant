@@ -106,3 +106,81 @@ def test_ready_polling_is_not_an_error(admin):
     app.dependency_overrides[get_llm] = lambda: FakeLLM(connect_error=True)
     assert admin.get("/ready").status_code == 503
     assert all(row["errors"] == 0 for row in days(admin))
+
+
+# ── IP и локация ──────────────────────────────────────────
+class FakeGeo:
+    """Подменная база локаций в формате GeoIP2/DB-IP."""
+
+    def get(self, ip):
+        if ip == "84.54.70.1":
+            return {
+                "city": {"names": {"en": "Tashkent", "ru": "Ташкент"}},
+                "subdivisions": [{"names": {"en": "Tashkent"}}],
+                "country": {"iso_code": "UZ", "names": {"en": "Uzbekistan", "ru": "Узбекистан"}},
+            }
+        return None
+
+
+def funnel_login(login, password, ip):
+    # За Tailscale Funnel соединение локальное, настоящий адрес — в заголовке.
+    client = TestClient(app, client=("127.0.0.1", 50000), headers={"X-Forwarded-For": f"{ip}, 10.0.0.2"})
+    return client, client.post("/api/v1/auth/login", json={"login": login, "password": password})
+
+
+def test_login_ip_and_location(admin, medics, monkeypatch):
+    from app.review import geo
+
+    monkeypatch.setattr(geo, "_reader", lambda path: FakeGeo())
+    client, response = funnel_login("medic2", PASSWORD, "84.54.70.1")
+    assert response.status_code == 200
+    funnel_login("medic2", "wrong-password", "8.8.4.4")
+    assert ask(client, "Вопрос из Ташкента").status_code == 200
+
+    items = details(admin, today())
+    login = next(i for i in items if i["kind"] == "login" and i["ip"] == "84.54.70.1")
+    assert login["user"] == "Медик 2"
+    assert login["location"] == "Ташкент, Узбекистан"
+    failed = next(i for i in items if i["kind"] == "login_failed" and i["ip"] == "8.8.4.4")
+    assert failed["location"] == ""  # адреса нет в базе
+    question = next(i for i in items if i["kind"] == "question")
+    assert question["ip"] == "84.54.70.1" and question["location"] == "Ташкент, Узбекистан"
+    place = next(p for p in days(admin)[0]["places"] if p["place"].startswith("Ташкент"))
+    assert place == {"place": "Ташкент, Узбекистан", "user": "Медик 2", "logins": 1, "ips": ["84.54.70.1"]}
+
+
+def test_forwarded_header_is_ignored_from_outside(admin):
+    # Не через локальный прокси: заголовок подделать может кто угодно.
+    client = TestClient(app, client=("198.51.100.7", 50000))
+    client.post("/api/v1/auth/login", json={"login": "admin", "password": "x"}, headers={"X-Forwarded-For": "1.2.3.4"})
+    failed = next(i for i in details(admin, today()) if i["kind"] == "login_failed")
+    assert failed["ip"] == "198.51.100.7"
+
+
+def test_internal_addresses_are_named():
+    from app.review.geo import locate
+
+    assert locate("127.0.0.1") == "этот компьютер"
+    assert locate("100.79.224.104") == "сеть Tailscale"
+    assert locate("192.168.1.5") == "локальная сеть"
+    assert locate("не адрес") == ""
+    assert locate("84.54.70.1", FakeGeo()) == "Ташкент, Узбекистан"
+
+
+def test_old_journal_gets_ip_columns(tmp_path):
+    import sqlite3
+
+    from app.review.store import Store
+
+    path = tmp_path / "old.sqlite3"
+    db = sqlite3.connect(path)
+    db.execute("CREATE TABLE events (id INTEGER PRIMARY KEY, created_at REAL NOT NULL, kind TEXT NOT NULL, "
+               "user_id INTEGER, login TEXT NOT NULL DEFAULT '', question TEXT NOT NULL DEFAULT '', "
+               "language TEXT NOT NULL DEFAULT '', followup INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT '', "
+               "error TEXT NOT NULL DEFAULT '', first_ms REAL, total_ms REAL, refinement_id INTEGER)")
+    db.execute("INSERT INTO events (created_at, kind) VALUES (?, 'login')", (time.time(),))
+    db.commit()
+    db.close()
+    store = Store(path)
+    store.log_event("login", ip="84.54.70.1", location="Ташкент")
+    assert [i["ip"] for i in store.activity_day(today())] == ["", "84.54.70.1"]

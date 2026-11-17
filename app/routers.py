@@ -4,7 +4,7 @@ import logging
 import time
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.absence import drop_absence_citations, strip_absence_markers, without_absence
@@ -26,6 +26,7 @@ from app.corpus.service import Grounding, Retrieval, Retriever, get_retriever, r
 from app.llm import Claims, LLMClient, cited_ids, ensure_structured_output, get_llm
 from app.prompt import DISCLAIMER
 from app.review.auth import current_user, get_store
+from app.review.geo import visitor
 from app.review.store import Store, safe_log
 from app.review.verified import Verified, VerifiedAnswers, get_verified_answers
 from app.settings import get_settings
@@ -63,6 +64,7 @@ async def ready(llm: LLMClient = Depends(get_llm)):
 @router.post("/api/v1/chat")
 async def chat(
     body: ChatRequest,
+    request: Request,
     llm: LLMClient = Depends(get_llm),
     retriever: Retriever = Depends(get_retriever),
     verified_answers: VerifiedAnswers = Depends(get_verified_answers),
@@ -79,6 +81,7 @@ async def chat(
         "question": question,
         "language": question_language(question) or "",
         "followup": sum(m.role == "user" for m in body.messages) > 1,
+        **visitor(request),
     }
 
     def write() -> None:

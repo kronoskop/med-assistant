@@ -12,6 +12,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.llm import ensure_structured_output, get_llm
 from app.review.api import router as review_router
 from app.review.auth import ensure_first_admin, get_store
+from app.review.geo import visitor
 from app.review.store import safe_log
 from app.routers import router
 from app.schemas import AppError, ErrorBody, UTF8JSONResponse
@@ -149,7 +150,7 @@ def _journal_error(request: Request, code: str) -> None:
     if request.url.path in ("/api/v1/chat", "/ready"):
         return
     store = request.app.dependency_overrides.get(get_store, get_store)()
-    safe_log(store, "error", error=f"{code} {request.method} {request.url.path}")
+    safe_log(store, "error", error=f"{code} {request.method} {request.url.path}", **visitor(request))
 
 
 async def _app_error_handler(_request: Request, exc: AppError) -> JSONResponse:

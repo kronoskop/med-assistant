@@ -102,7 +102,9 @@ CREATE TABLE IF NOT EXISTS events (
     error TEXT NOT NULL DEFAULT '',
     first_ms REAL,
     total_ms REAL,
-    refinement_id INTEGER
+    refinement_id INTEGER,
+    ip TEXT NOT NULL DEFAULT '',
+    location TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS events_time ON events(created_at);
 """
@@ -156,6 +158,11 @@ class Store:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._db() as db:
             db.executescript(_SCHEMA)
+            # Колонки, добавленные после первого выпуска журнала.
+            have = {r["name"] for r in db.execute("PRAGMA table_info(events)")}
+            for column in ("ip", "location"):
+                if column not in have:
+                    db.execute(f"ALTER TABLE events ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
 
     @contextmanager
     def _db(self):
@@ -636,13 +643,15 @@ class Store:
         error: str = "",
         first_ms: float | None = None,
         total_ms: float | None = None,
+        ip: str = "",
+        location: str = "",
     ) -> None:
         with self._db() as db:
             db.execute(
                 "INSERT INTO events (created_at, kind, user_id, login, question, language, followup, status, error, "
-                "first_ms, total_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "first_ms, total_ms, ip, location) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (time.time(), kind, user_id or None, login[:64], question, language[:8], int(followup), status,
-                 error[:200], first_ms, total_ms),
+                 error[:200], first_ms, total_ms, ip[:64], location[:200]),
             )
 
     @staticmethod
@@ -659,7 +668,7 @@ class Store:
             return out.setdefault(key, {
                 "day": key, "users": set(), "logins": 0, "failed_logins": 0, "questions": 0, "per_user": {},
                 "answer_ms": None, "first_ms": None, "errors": 0, "stopped": 0, "verified": 0, "refused": 0,
-                "refinements": 0, "accepted": 0, "rejected": 0, "votes_agree": 0, "votes_disagree": 0, "proposals": 0,
+                "places": {}, "refinements": 0, "accepted": 0, "rejected": 0, "votes_agree": 0, "votes_disagree": 0, "proposals": 0,
             })
 
         with self._db() as db:
@@ -688,6 +697,17 @@ class Store:
                     item["per_user"][who] = item["per_user"].get(who, 0) + r["n"]
                     if r["status"] in ("error", "stopped", "verified", "refused"):
                         item[{"error": "errors"}.get(r["status"], r["status"])] += r["n"]
+            # Откуда входили: локация (или IP, если её нет) и сколько раз.
+            for r in db.execute(
+                f"SELECT {self._day_expr('created_at')} AS d, user_id, ip, location, COUNT(*) AS n FROM events "
+                "WHERE created_at >= :since AND kind = 'login' GROUP BY d, user_id, ip, location",
+                params,
+            ):
+                place = (r["location"] or r["ip"] or "—", names.get(r["user_id"], "—"))
+                places = day(r["d"])["places"]
+                entry = places.setdefault(place, {"ips": set(), "logins": 0})
+                entry["ips"].add(r["ip"])
+                entry["logins"] += r["n"]
             # Среднее время — по завершённым ответам: оборванные и сбойные его исказят.
             for r in db.execute(
                 f"SELECT {self._day_expr('created_at')} AS d, AVG(total_ms) AS total, AVG(first_ms) AS first "
@@ -723,6 +743,10 @@ class Store:
         rows = sorted(out.values(), key=lambda item: item["day"], reverse=True)
         for item in rows:
             item["users"] = len(item["users"])
+            item["places"] = [
+                {"place": place, "user": user, "logins": v["logins"], "ips": sorted(i for i in v["ips"] if i)}
+                for (place, user), v in sorted(item["places"].items(), key=lambda kv: (kv[0][1], kv[0][0]))
+            ]
             item["per_user"] = [
                 {"name": name, "questions": n}
                 for name, n in sorted(item["per_user"].items(), key=lambda kv: (-kv[1], kv[0]))
@@ -755,6 +779,8 @@ class Store:
                     "first_ms": r["first_ms"],
                     "total_ms": r["total_ms"],
                     "refinement_id": r["refinement_id"],
+                    "ip": r["ip"],
+                    "location": r["location"],
                 })
             for r in db.execute(
                 "SELECT r.id, r.question, r.text, r.created_at, r.parent_id, u.name FROM refinements r "

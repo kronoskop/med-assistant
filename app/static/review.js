@@ -622,6 +622,11 @@ const Review = (() => {
     ]);
   }
 
+  // Лицензия DB-IP Lite (CC BY 4.0) требует указать источник локаций.
+  const geoCredit = () => el('div', { class: 'rv-muted rv-act-credit' }, [
+    T().actGeo + ' ', el('a', { href: 'https://db-ip.com', target: '_blank', rel: 'noopener', text: 'IP Geolocation by DB-IP' }),
+  ]);
+
   function renderDays() {
     const t = T();
     if (!view.items.length) return [activityHead([]), empty(t.actEmpty)];
@@ -629,7 +634,12 @@ const Review = (() => {
     const rows = view.items.map((d) => el('tr', {}, [
       el('td', { class: 'rv-act-day' }, [el('button', { type: 'button', class: 'rv-act-open', onClick: () => { view.day = d.day; loadTab('activity'); } }, [dayLabel(d.day)])]),
       el('td', { class: 'n' }, [num(d.users)]),
-      el('td', { class: 'n' }, [num(d.logins), d.failed_logins ? el('div', { class: 'rv-act-sub bad', text: fill(t.actFailed, { n: d.failed_logins }) }) : null]),
+      el('td', {}, [
+        el('div', { class: 'n' }, [num(d.logins)]),
+        d.failed_logins ? el('div', { class: 'rv-act-sub bad', text: fill(t.actFailed, { n: d.failed_logins }) }) : null,
+        // Откуда входили: человек — место; IP — во всплывающей подсказке.
+        ...(d.places || []).map((p) => el('div', { class: 'rv-act-sub rv-act-place', title: p.ips.join(', '), text: p.user + ': ' + p.place + (p.logins > 1 ? ' ×' + p.logins : '') })),
+      ]),
       el('td', {}, [
         el('div', { class: 'n' }, [num(d.questions)]),
         ...d.per_user.map((u) => el('div', { class: 'rv-act-sub', text: u.name + ': ' + u.questions })),
@@ -649,6 +659,7 @@ const Review = (() => {
     ]));
     return [
       activityHead([el('span', { class: 'rv-muted', text: t.actNote })]),
+      geoCredit(),
       el('div', { class: 'rv-table-wrap sc' }, [el('table', { class: 'rv-table' }, [
         el('thead', {}, [el('tr', {}, head.map((h) => el('th', { text: h })))]),
         el('tbody', {}, rows),
@@ -685,13 +696,18 @@ const Review = (() => {
     if (!view.items.length) return [head, empty(t.actEmptyDay)];
     return [
       head,
+      geoCredit(),
       el('div', { class: 'rv-table-wrap sc' }, [el('table', { class: 'rv-table rv-events' }, [
-        el('thead', {}, [el('tr', {}, [t.actTime, t.actWho, t.actEvent, t.actDetails].map((h) => el('th', { text: h })))]),
+        el('thead', {}, [el('tr', {}, [t.actTime, t.actWho, t.actEvent, t.actDetails, t.actFrom].map((h) => el('th', { text: h })))]),
         el('tbody', {}, view.items.map((e) => el('tr', { class: 'k-' + e.kind }, [
           el('td', { class: 'n rv-act-time', text: clock(e.time) }),
           el('td', { text: e.user || '—' }),
           el('td', {}, [el('span', { class: 'rv-act-kind k-' + e.kind, text: t.actKind[e.kind] || e.kind })]),
           el('td', {}, eventDetails(e)),
+          el('td', { class: 'rv-act-from' }, e.ip ? [
+            el('div', { text: e.location || '—' }),
+            el('div', { class: 'rv-act-sub', text: e.ip }),
+          ] : []),
         ]))),
       ])]),
     ];
