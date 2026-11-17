@@ -12,6 +12,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 # ломая JSON-контракт ошибок.
 ASSETS: dict[str, str] = {
     "app.js": "text/javascript; charset=utf-8",
+    "history.js": "text/javascript; charset=utf-8",
     "data.js": "text/javascript; charset=utf-8",
     "topics.js": "text/javascript; charset=utf-8",
     "styles.css": "text/css; charset=utf-8",
