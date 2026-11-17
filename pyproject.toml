@@ -12,6 +12,7 @@ dependencies = [
     "pypdf>=5.0",
     "uvicorn[standard]>=0.32",
     "sentence-transformers>=3.0",
+    "maxminddb>=3.2.0",
 ]
 
 [project.optional-dependencies]

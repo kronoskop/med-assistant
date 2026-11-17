@@ -206,4 +206,8 @@
 .rv-act-kind.k-refinement_accepted { background: #e6f2ee; color: var(--ok); }
 .rv-act-q { font-weight: 600; overflow-wrap: anywhere; min-width: 220px; }
 .rv-act-qref { color: var(--ink-muted); overflow-wrap: anywhere; min-width: 220px; }
-.rv-ws:has(.rv-table) { max-width: 1080px; }
+.rv-ws:has(.rv-table) { max-width: 1240px; }
+.rv-act-place { white-space: normal; min-width: 150px; max-width: 220px; }
+.rv-act-from { min-width: 140px; }
+.rv-act-credit { order: 99; font-size: 11px; }
+.rv-act-credit a { color: inherit; }

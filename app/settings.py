@@ -90,6 +90,9 @@ class Settings(BaseSettings):
     # («анемия у детей» вместо «у беременных») не должен получить проверенный
     # ответ. Порог подбирается замером: tools/verified_threshold.py.
     verified_min_score: float = 0.0
+    # Офлайн-база локаций по IP для журнала активности (DB-IP Lite City, MMDB).
+    # Скачивается tools/setup_demo.sh; нет файла — в журнале только IP.
+    geoip_db: str = "data/dbip-city-lite.mmdb"
 
 
 @lru_cache
