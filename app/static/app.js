@@ -38,6 +38,7 @@ const ICONS = {
   'search': 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14M20 20l-4-4',
   'pencil': 'M4 20l1-4.5L16.5 4a2.1 2.1 0 0 1 3 3L8 18.5zM14.5 6l3 3',
   'x': 'M6 6l12 12M18 6L6 18',
+  'trash': 'M4.5 6.5h15M9.5 6.5V4h5v2.5M6.5 6.5l1 13.5h9l1-13.5M10 10.5v6M14 10.5v6',
   'seal-check': 'M12 3l2.3 1.7 2.9-.1.9 2.7 2.3 1.7-.9 2.7.9 2.7-2.3 1.7-.9 2.7-2.9-.1L12 21l-2.3-1.7-2.9.1-.9-2.7L3.6 15l.9-2.7-.9-2.7 2.3-1.7.9-2.7 2.9.1zM9 12l2 2 4-4',
   'users': 'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M2.5 20a6.5 6.5 0 0 1 13 0M16 4.2a3.5 3.5 0 0 1 0 6.6M18 14.3a6.5 6.5 0 0 1 3.5 5.7',
   'sign-out': 'M14 4H6v16h8M10 12h10M17 8.5l3.5 3.5-3.5 3.5',
@@ -111,9 +112,9 @@ function el(tag, props, children) {
 }
 
 // ── состояние ─────────────────────────────────────────────
-// История живёт только в этой вкладке и только в памяти: сервер диалоги
-// не хранит, а писать клинические тексты в localStorage на общей рабочей
-// станции нельзя.
+// История консультаций хранится на сервере, у каждого пользователя своя
+// (history.js). В браузере клинические тексты не сохраняются: на общей
+// рабочей станции localStorage видят все.
 const state = {
   lang: 'uz',  // язык по умолчанию; выбранный на экране входа запоминается
   chats: [],
@@ -129,11 +130,12 @@ let chatSeq = 0;
 
 const T = () => I18N[state.lang];
 const activeChat = () => state.chats.find((c) => c.id === state.activeId);
-const thread = () => (activeChat() ? activeChat().items : []);
+const thread = () => (activeChat() && activeChat().items ? activeChat().items : []);
 
 function newChat() {
   chatSeq += 1;
-  const chat = { id: chatSeq, title: '', time: '', items: [] };
+  // serverId — номер диалога в истории; items === null — реплики ещё не загружены.
+  const chat = { id: chatSeq, serverId: null, title: '', updated: 0, items: [] };
   state.chats.push(chat);
   state.activeId = chat.id;
   return chat;
@@ -170,16 +172,12 @@ function pushError(code, message) {
 async function ask(question) {
   const text = (question || '').trim();
   if (!text || state.streaming) return;
+  if (activeChat() && activeChat().items === null) return;  // диалог ещё загружается
 
   if (!activeChat()) newChat();
   const chat = activeChat();
-  if (!chat.title) {
-    chat.title = text;
-    chat.time = new Date().toLocaleTimeString(state.lang === 'en' ? 'en-GB' : 'ru-RU', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  }
+  if (!chat.title) chat.title = text;
+  chat.updated = Date.now() / 1000;
 
   state.stick = true;
   thread().push({ role: 'user', content: text });
@@ -310,6 +308,7 @@ async function ask(question) {
 function finish() {
   state.streaming = false;
   controller = null;
+  History.save(activeChat());
   render();
 }
 
@@ -361,6 +360,7 @@ function addProtocolCard() {
     guides: [LOCAL_GUIDE, { t: 'WHO recommendations on antenatal care for a positive pregnancy experience', src: 'who', y: 2016, href: 'https://www.ncbi.nlm.nih.gov/books/NBK409108/' }],
     links: [{ label: T().protocolsLink, href: T().protocolsHref }],
   });
+  History.save(activeChat());
   render();
 }
 
@@ -369,6 +369,7 @@ function addConsultCard() {
   state.stick = true;
   thread().push({ role: 'user', content: T().consultMsg, local: true });
   thread().push({ role: 'assistant', local: true, done: true, content: T().consultBody, escalate: true });
+  History.save(activeChat());
   render();
 }
 
@@ -707,21 +708,29 @@ function renderChips() {
 function renderHistory() {
   const list = document.getElementById('history-list');
   list.textContent = '';
-  const named = state.chats.filter((c) => c.title);
+  const named = state.chats.filter((c) => c.title).sort((a, b) => b.updated - a.updated);
   if (!named.length) {
     list.appendChild(el('div', { class: 'side-empty', text: T().historyEmpty }));
     return;
   }
-  for (const chat of named.slice().reverse()) {
+  for (const chat of named) {
     list.appendChild(
-      el('button', {
-        class: 'side-item',
-        type: 'button',
-        'aria-current': chat.id === state.activeId ? 'true' : 'false',
-        onClick: () => { if (state.streaming) return; state.activeId = chat.id; state.stick = true; render(); },
-      }, [
-        el('div', { class: 'side-item-title', text: chat.title }),
-        el('div', { class: 'side-item-meta', text: chat.time }),
+      el('div', { class: 'side-row', 'aria-current': chat.id === state.activeId ? 'true' : 'false' }, [
+        el('button', {
+          class: 'side-item',
+          type: 'button',
+          onClick: () => History.open(chat),
+        }, [
+          el('div', { class: 'side-item-title', text: chat.title }),
+          el('div', { class: 'side-item-meta', text: History.when(chat.updated) }),
+        ]),
+        el('button', {
+          class: 'side-del',
+          type: 'button',
+          title: T().historyDelete,
+          'aria-label': T().historyDelete + ': ' + chat.title,
+          onClick: () => History.remove(chat),
+        }, [icon('trash')]),
       ])
     );
   }
@@ -732,6 +741,11 @@ function render() {
   col.textContent = '';
   const items = thread();
 
+  if (activeChat() && activeChat().items === null) {
+    col.appendChild(el('div', { class: 'side-loading', text: T().historyLoading }));
+    renderHistory();
+    return;
+  }
   if (!items.length) col.appendChild(renderGreeting());
 
   for (const [index, item] of items.entries()) {

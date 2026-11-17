@@ -81,10 +81,12 @@ const Review = (() => {
         const body = await api('/auth/login', { method: 'POST', quiet: true, body: { login: login.value, password: password.value } });
         session.user = body.user;
         box.remove();
-        await refreshMe();
-        // Чужие диалоги на общей рабочей станции новому пользователю не показываем.
+        // Чужие диалоги на общей рабочей станции новому пользователю не показываем:
+        // вкладка очищается, история входящего загружается с сервера.
+        History.reset();
         state.chats = [];
         newChat();
+        await refreshMe();
         applyStatic();
         render();
       } catch (err) {
@@ -163,6 +165,7 @@ const Review = (() => {
 
   async function logout() {
     try { await api('/auth/logout', { method: 'POST', quiet: true }); } catch (_) { /* сеанс уже закрыт */ }
+    History.reset();
     state.chats = [];
     newChat();
     render();
@@ -175,6 +178,7 @@ const Review = (() => {
       session.user = body.user;
       session.counts = body.counts;
       session.required = body.required_confirmations;
+      if (signedIn() && History.owner() !== session.user.id) History.load(session.user.id);
     } catch (err) {
       if (err.status === 401) { showLogin(); return; }
     }

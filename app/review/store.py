@@ -107,6 +107,19 @@ CREATE TABLE IF NOT EXISTS events (
     location TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS events_time ON events(created_at);
+-- История консультаций: диалог целиком, как его видит интерфейс. Владелец —
+-- один пользователь, чужие диалоги не видны никому, в том числе администратору.
+CREATE TABLE IF NOT EXISTS conversations (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    language TEXT NOT NULL DEFAULT '',
+    items TEXT NOT NULL DEFAULT '[]',
+    turns INTEGER NOT NULL DEFAULT 0,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS conversations_user ON conversations(user_id, updated_at);
 """
 
 # Виды событий журнала и исходы вопроса.
@@ -653,6 +666,77 @@ class Store:
                 (time.time(), kind, user_id or None, login[:64], question, language[:8], int(followup), status,
                  error[:200], first_ms, total_ms, ip[:64], location[:200]),
             )
+
+    # ── история консультаций ──────────────────────────────
+    @staticmethod
+    def _conversation(row, with_items: bool = False) -> dict:
+        view = {
+            "id": row["id"],
+            "title": row["title"],
+            "language": row["language"],
+            "turns": row["turns"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+        if with_items:
+            view["items"] = json.loads(row["items"])
+        return view
+
+    @staticmethod
+    def _turns(items: list[dict]) -> int:
+        return sum(1 for item in items if item.get("role") == "user" and not item.get("local"))
+
+    def list_conversations(self, user_id: int, limit: int = 500) -> list[dict]:
+        with self._db() as db:
+            rows = db.execute(
+                "SELECT id, title, language, turns, created_at, updated_at FROM conversations "
+                "WHERE user_id = ? ORDER BY updated_at DESC LIMIT ?",
+                (user_id, limit),
+            )
+            return [self._conversation(r) for r in rows]
+
+    def get_conversation(self, user_id: int, conversation_id: int) -> dict:
+        with self._db() as db:
+            row = db.execute(
+                "SELECT * FROM conversations WHERE id = ? AND user_id = ?", (conversation_id, user_id)
+            ).fetchone()
+        # Чужой диалог неотличим от несуществующего: так не угадать чужие номера.
+        if row is None:
+            raise _error(404, "not_found", "Диалог не найден")
+        return self._conversation(row, with_items=True)
+
+    def save_conversation(
+        self, user_id: int, conversation_id: int | None, *, title: str, language: str, items: list[dict]
+    ) -> dict:
+        title = " ".join(title.split())[:300] or "…"
+        now = time.time()
+        payload = json.dumps(items, ensure_ascii=False)
+        with self._db() as db:
+            if conversation_id is None:
+                cursor = db.execute(
+                    "INSERT INTO conversations (user_id, title, language, items, turns, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (user_id, title, language[:8], payload, self._turns(items), now, now),
+                )
+                conversation_id = cursor.lastrowid
+            else:
+                cursor = db.execute(
+                    "UPDATE conversations SET title = ?, language = ?, items = ?, turns = ?, updated_at = ? "
+                    "WHERE id = ? AND user_id = ?",
+                    (title, language[:8], payload, self._turns(items), now, conversation_id, user_id),
+                )
+                if cursor.rowcount == 0:
+                    raise _error(404, "not_found", "Диалог не найден")
+            row = db.execute("SELECT * FROM conversations WHERE id = ?", (conversation_id,)).fetchone()
+        return self._conversation(row)
+
+    def delete_conversation(self, user_id: int, conversation_id: int) -> None:
+        with self._db() as db:
+            cursor = db.execute(
+                "DELETE FROM conversations WHERE id = ? AND user_id = ?", (conversation_id, user_id)
+            )
+        if cursor.rowcount == 0:
+            raise _error(404, "not_found", "Диалог не найден")
 
     @staticmethod
     def _day_expr(column: str) -> str:

@@ -20,6 +20,8 @@ router = APIRouter(prefix="/api/v1")
 
 Role = Literal["admin", "medic", "observer"]
 LONG = 20_000
+MAX_ITEMS = 400
+MAX_CONVERSATION_BYTES = 2_000_000
 
 
 class LoginBody(BaseModel):
@@ -67,6 +69,14 @@ class UserUpdate(BaseModel):
     role: Role | None = None
     active: bool | None = None
     password: str | None = Field(default=None, max_length=256)
+
+
+class ConversationBody(BaseModel):
+    title: str = Field(min_length=1, max_length=LONG)
+    language: str = Field(default="", max_length=8)
+    # Реплики в том виде, в каком их рисует интерфейс: текст, сноски, уточнения.
+    # Сервер их не толкует, только хранит и отдаёт владельцу.
+    items: list[dict] = Field(max_length=MAX_ITEMS)
 
 
 class SettingsBody(BaseModel):
@@ -193,6 +203,55 @@ def notifications(user: dict = Depends(current_user), store: Store = Depends(get
 @router.post("/notifications/read")
 def notifications_read(user: dict = Depends(current_user), store: Store = Depends(get_store)):
     store.mark_read(user)
+    return {"status": "ok"}
+
+
+# ── история консультаций ──────────────────────────────────
+def require_account(user: dict = Depends(current_user)) -> dict:
+    """История ведётся по учётной записи: у гостя без входа её нет."""
+    if user["id"] <= 0:
+        raise AppError(403, "forbidden", "История доступна только после входа")
+    return user
+
+
+def _conversation_args(body: ConversationBody) -> dict:
+    if len(json.dumps(body.items, ensure_ascii=False).encode()) > MAX_CONVERSATION_BYTES:
+        raise AppError(413, "too_large", "Диалог слишком большой для сохранения")
+    return {"title": body.title, "language": body.language, "items": body.items}
+
+
+@router.get("/conversations")
+def conversations(user: dict = Depends(require_account), store: Store = Depends(get_store)):
+    return {"items": store.list_conversations(user["id"])}
+
+
+@router.post("/conversations", status_code=201)
+def create_conversation(
+    body: ConversationBody, user: dict = Depends(require_account), store: Store = Depends(get_store)
+):
+    return store.save_conversation(user["id"], None, **_conversation_args(body))
+
+
+@router.get("/conversations/{conversation_id}")
+def conversation(conversation_id: int, user: dict = Depends(require_account), store: Store = Depends(get_store)):
+    return store.get_conversation(user["id"], conversation_id)
+
+
+@router.put("/conversations/{conversation_id}")
+def update_conversation(
+    conversation_id: int,
+    body: ConversationBody,
+    user: dict = Depends(require_account),
+    store: Store = Depends(get_store),
+):
+    return store.save_conversation(user["id"], conversation_id, **_conversation_args(body))
+
+
+@router.delete("/conversations/{conversation_id}")
+def delete_conversation(
+    conversation_id: int, user: dict = Depends(require_account), store: Store = Depends(get_store)
+):
+    store.delete_conversation(user["id"], conversation_id)
     return {"status": "ok"}
 
 
