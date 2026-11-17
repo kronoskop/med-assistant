@@ -83,14 +83,20 @@ class LoginThrottle:
         self._fails: dict[str, tuple[int, float]] = {}
         self._lock = threading.Lock()
 
+    @staticmethod
+    def _key(login: str) -> str:
+        # Тот же вид, в каком логин ищется в базе: иначе « admin», «admin » и т. д.
+        # давали бы по пять попыток каждый.
+        return login.strip().casefold()
+
     def check(self, login: str) -> None:
         with self._lock:
-            count, since = self._fails.get(login.casefold(), (0, 0.0))
+            count, since = self._fails.get(self._key(login), (0, 0.0))
             if count >= self.LIMIT and time.monotonic() - since < self.PAUSE:
                 raise AppError(429, "too_many_attempts", "Слишком много попыток. Повторите через минуту")
 
     def record(self, login: str, ok: bool) -> None:
-        key = login.casefold()
+        key = self._key(login)
         with self._lock:
             if ok:
                 self._fails.pop(key, None)
@@ -100,7 +106,12 @@ class LoginThrottle:
                 count = 0
             self._fails[key] = (count + 1, time.monotonic())
             if len(self._fails) > 10_000:
-                self._fails.clear()
+                # Чистим только остывшие записи: полная очистка снимала бы паузу
+                # с логина, который сейчас перебирают.
+                now = time.monotonic()
+                self._fails = {
+                    k: v for k, v in self._fails.items() if now - v[1] < self.PAUSE
+                }
 
 
 throttle = LoginThrottle()
