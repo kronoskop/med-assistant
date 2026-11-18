@@ -178,12 +178,17 @@ class Store:
                     db.execute(f"ALTER TABLE events ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
 
     @contextmanager
-    def _db(self):
+    def _db(self, *, immediate: bool = False):
         db = sqlite3.connect(self.path, timeout=10)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA foreign_keys = ON")
         try:
             with db:  # одна транзакция на операцию
+                if immediate:
+                    # Голосование читает статус, а потом пишет. Без блокировки
+                    # с самого начала два медика одновременно могли бы, например,
+                    # принять уточнение, которое другой только что отклонил.
+                    db.execute("BEGIN IMMEDIATE")
                 yield db
         finally:
             db.close()
@@ -313,7 +318,7 @@ class Store:
     def set_required_confirmations(self, value: int) -> int:
         if not 1 <= value <= 50:
             raise _error(422, "bad_value", "Число подтверждений: от 1 до 50")
-        with self._db() as db:
+        with self._db(immediate=True) as db:
             db.execute(
                 "INSERT INTO config (key, value) VALUES ('required_confirmations', ?) "
                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -367,7 +372,7 @@ class Store:
 
     def vote(self, user: dict, refinement_id: int, agree: bool, comment: str = "") -> dict:
         comment = comment.strip()
-        with self._db() as db:
+        with self._db(immediate=True) as db:
             row = self._pending(db, refinement_id)
             if row["author_id"] == user["id"]:
                 raise _error(403, "own_refinement", "Своё уточнение подтверждать нельзя")
@@ -431,7 +436,7 @@ class Store:
 
     def archive(self, admin: dict, refinement_id: int) -> dict:
         """Администратор снимает принятый ответ: система перестаёт его использовать."""
-        with self._db() as db:
+        with self._db(immediate=True) as db:
             row = db.execute("SELECT * FROM refinements WHERE id = ?", (refinement_id,)).fetchone()
             if row is None:
                 raise _error(404, "not_found", "Не найдено")
@@ -447,7 +452,7 @@ class Store:
         text = text.strip()
         if not text:
             raise _error(422, "validation_error", "Нужен текст формулировки")
-        with self._db() as db:
+        with self._db(immediate=True) as db:
             row = self._pending(db, refinement_id)
             if row["author_id"] == user["id"]:
                 raise _error(403, "own_refinement", "Своё уточнение правит сам автор")
@@ -469,7 +474,7 @@ class Store:
         Принял — текущее уточнение закрывается, голосование начинается заново
         по новой формулировке; согласие автора считается первым подтверждением.
         """
-        with self._db() as db:
+        with self._db(immediate=True) as db:
             proposal = db.execute("SELECT * FROM proposals WHERE id = ?", (proposal_id,)).fetchone()
             if proposal is None:
                 raise _error(404, "not_found", "Не найдено")

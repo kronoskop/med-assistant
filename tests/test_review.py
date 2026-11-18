@@ -105,6 +105,73 @@ def test_login_pauses_after_repeated_failures(secured):
     assert client.post("/api/v1/auth/login", json={"login": "someone", "password": "x"}).status_code == 429
 
 
+def test_login_pause_not_bypassed_by_spaces(secured):
+    # В базе логин ищется без пробелов по краям: пауза должна действовать так же.
+    client = TestClient(app)
+    for variant in ("someone", " someone", "someone ", "  someone", "someone  "):
+        client.post("/api/v1/auth/login", json={"login": variant, "password": "wrong-password"})
+    assert client.post("/api/v1/auth/login", json={"login": "\tsomeone ", "password": "x"}).status_code == 429
+
+
+def test_login_pause_survives_many_other_logins():
+    from app.review.auth import LoginThrottle
+    from app.schemas import AppError
+
+    throttle = LoginThrottle()
+    for _ in range(LoginThrottle.LIMIT):
+        throttle.record("admin", False)
+    for n in range(10_050):
+        throttle.record(f"junk{n}", False)
+    with pytest.raises(AppError):
+        throttle.check("admin")
+
+
+def test_concurrent_rejection_is_not_overridden(tmp_path):
+    """Согласие, прочитавшее «ожидает» до чужого отклонения, не принимает отклонённое."""
+    import threading
+
+    from app.review.store import Store
+    from app.schemas import AppError
+
+    store = Store(tmp_path / "r.sqlite3")
+    store.set_required_confirmations(1)
+    author = store.create_user("author", "A", "medic", PASSWORD)
+    yes = store.create_user("yes", "Y", "medic", PASSWORD)
+    no = store.create_user("no", "N", "medic", PASSWORD)
+    rid = store.create_refinement(author, question="Вопрос?", text="Ответ")["id"]
+
+    # Голос «против» приходит, когда голос «за» уже прочитал статус «ожидает».
+    original = store._pending
+    outcome: dict = {}
+
+    def disagree():
+        try:
+            store.vote(no, rid, False, "нет")
+            outcome["no"] = "ok"
+        except AppError as exc:
+            outcome["no"] = exc.code
+
+    def slow_pending(db, refinement_id):
+        row = original(db, refinement_id)
+        if threading.current_thread().name == "yes":
+            rival = threading.Thread(target=disagree)
+            rival.start()
+            rival.join(0.5)  # без блокировки «против» успел бы записаться здесь
+        return row
+
+    store._pending = slow_pending
+    worker = threading.Thread(name="yes", target=lambda: store.vote(yes, rid, True))
+    worker.start()
+    worker.join(20)
+    for _ in range(200):
+        if "no" in outcome:
+            break
+        threading.Event().wait(0.05)
+    store._pending = original
+    status = store.get_refinement(no, rid)["status"]
+    # Допустим любой порядок, но не оба сразу: принято и при этом записано несогласие.
+    assert (status, outcome.get("no")) in {("accepted", "closed"), ("rejected", "ok")}
+
 def test_me_and_logout(admin):
     assert admin.get("/api/v1/auth/me").json()["user"]["role"] == "admin"
     admin.post("/api/v1/auth/logout")
